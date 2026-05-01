@@ -1,144 +1,132 @@
 ---
-schema_version: '1.0'
 template: image-brief
-product_id: '' # 填写 PostgreSQL Product.id
-brand: '' # homtone | spoonlemon | davivy | tysun
-market: '' # US | CA | UK | DE | FR | ES | IT
-platform: '' # amazon | walmart
-platform_listing_id: '' # ASIN / Walmart Item ID
-operator: '' # 需求发起运营人员姓名
-created_at: '' # YYYY-MM-DD
-deadline: '' # YYYY-MM-DD（设计/外包交付截止日）
-status: draft # draft | in_review | approved | delivered
+version: '1.0'
+status: active
+created: 2026-05-01
+origin: docs/yaemartOS-implementation-plan.md §W11 / U2
+type_schema: packages/shared-types/src/image-brief.ts
 ---
 
-# 图片需求单 v1（Image Brief）
+# 图片需求单模板 v1.0
 
-> 填写说明：每个素材类型单独一节；交付文件路径填写 Cloudinary Public ID（见 ADR-007 §2.2 命名约定）。
+> **使用说明**：运营创建 Brief → 发设计/外包 → 设计按规格交付 → 运营上传 Cloudinary → AI 侧可拉取 URL 组合 Listing。  
+> 每个商品（Product）填写一份。同一商品不同品牌/市场，可复制此模板修改 `brand` 和 `market_locale` 字段。
 
 ---
 
-## 1. 主图（Main Image）
+## 基本信息
 
-Amazon 主图须符合白底、完整展示产品、无水印、无文字叠加。
-
-| 字段                | 要求                                               | 填写 |
-| ------------------- | -------------------------------------------------- | ---- |
-| 数量                | 1 张（必须）                                       |      |
-| 尺寸                | 至少 1500×1500 px（推荐 2000×2000 px）             |      |
-| 格式                | JPEG / PNG                                         |      |
-| 背景                | 纯白（RGB 255,255,255）                            |      |
-| 产品占图面积        | ≥ 85%                                              |      |
-| 参考图链接          |                                                    |      |
-| 竞品参考 ASIN       |                                                    |      |
-| 产品角度/拍摄方向   | 正面/45°/俯视（三选一）                            |      |
-| 特别说明            |                                                    |      |
-| Cloudinary 交付路径 | `{env}/{brand}/listing/{platform_listing_id}/main` |      |
+| 字段                  | 值                                                            |
+| --------------------- | ------------------------------------------------------------- |
+| **Brief 编号**        | `IMG-{BRAND}-{YYYYMMDD}-{SEQ}` _(示例：IMG-HMT-20260501-001)_ |
+| **商品 SKU**          |                                                               |
+| **商品名称**          |                                                               |
+| **品牌**              | Homtone / Spoonlemon / Davivy / Tysun                         |
+| **目标市场/语言**     | US-EN / DE-DE / ...                                           |
+| **平台**              | Amazon / TikTok / Shopify                                     |
+| **需求日期**          | YYYY-MM-DD                                                    |
+| **截止日期**          | YYYY-MM-DD                                                    |
+| **负责运营**          |                                                               |
+| **Cloudinary 文件夹** | `/{brand}/{sku}/`                                             |
 
 ---
 
-## 2. 副图 / 场景图（Secondary / Lifestyle Images）
+## A 类：主图（Main Image）
 
-| 字段                | 要求                                                             | 填写 |
-| ------------------- | ---------------------------------------------------------------- | ---- |
-| 数量                | 3–6 张（建议 5 张）                                              |      |
-| 尺寸                | 至少 1500×1500 px                                                |      |
-| 格式                | JPEG / PNG                                                       |      |
-| 背景                | 白底或场景背景均可                                               |      |
-| 场景描述            | 每张写明使用场景（如：厨房烹饪、户外使用等）                     |      |
-| 文字叠加需求        | 列出需要叠加的卖点文案（每张最多 2 条）                          |      |
-| 产品角度/细节重点   |                                                                  |      |
-| 参考图链接          |                                                                  |      |
-| 竞品参考 ASIN       |                                                                  |      |
-| 特别说明            |                                                                  |      |
-| Cloudinary 交付路径 | `{env}/{brand}/listing/{platform_listing_id}/secondary/{01..06}` |      |
+> Amazon 主图要求：纯白背景 RGB(255,255,255)；商品占画面 ≥ 85%；无文字/水印/多余道具。
 
-### 副图卖点文案列表
+| #   | 规格要求                               | 文件名约定    | 备注     |
+| --- | -------------------------------------- | ------------- | -------- |
+| 1   | **3000 × 3000 px**，JPG/TIFF，≥ 72 dpi | `main-01.jpg` | 正面拍摄 |
+| 2   | 同上，侧面或 3/4 角度（可选加分）      | `main-02.jpg` |          |
 
-| 图序 | 卖点标题（≤ 20 字符） | 卖点说明（≤ 50 字符） |
-| ---- | --------------------- | --------------------- |
-| 01   |                       |                       |
-| 02   |                       |                       |
-| 03   |                       |                       |
-| 04   |                       |                       |
-| 05   |                       |                       |
+**文案/摆放要求**（描述拍摄角度、道具、特殊要求）：
+
+> _在此填写，例如：正面露出产品 Logo，底部留 5% 空间。_
 
 ---
 
-## 3. A+ 内容模块（A+ Content / Enhanced Brand Content）
+## B 类：场景图（Lifestyle / In-use）
 
-> 仅 Amazon 品牌注册品牌适用；每个 A+ 模块独立交付图片。
+> 展示真实使用场景，可含人物/环境；推荐 16:9 横版（亦接受正方形）。
 
-| 字段                | 要求                                                                       | 填写 |
-| ------------------- | -------------------------------------------------------------------------- | ---- |
-| 模块数量            | 3–7 个（Amazon 限制 7）                                                    |      |
-| 模块尺寸（标准）    | 970×300 px（横幅模块）<br>300×300 px（方形模块）<br>970×600 px（大型横幅） |      |
-| 格式                | JPEG / PNG                                                                 |      |
-| 文字叠加策略        | ☐ 图片内含文字 ☐ HTML 层文字（Amazon 输出模板）                            |      |
-| 品牌色调要求        | 见 `docs/ui/A-design-system.md` 对应品牌色卡                               |      |
-| 特别说明            |                                                                            |      |
-| Cloudinary 交付路径 | `{env}/{brand}/aplus/{platform_listing_id}/{module_01..07}`                |      |
+| #   | 尺寸                                     | 文件名约定     | 场景描述 |
+| --- | ---------------------------------------- | -------------- | -------- |
+| 1   | **2000 × 2000 px** 或 **3000 × 2000 px** | `scene-01.jpg` |          |
+| 2   | 同上                                     | `scene-02.jpg` |          |
+| 3   | 同上（可选）                             | `scene-03.jpg` |          |
 
-### A+ 模块规划
+**人物/道具要求**（年龄段、性别、肤色多样性、关键道具）：
 
-| 模块序 | 类型         | 主题内容描述 | 尺寸       |
-| ------ | ------------ | ------------ | ---------- |
-| 01     | 品牌故事横幅 |              | 970×300 px |
-| 02     | 核心卖点对比 |              | 970×300 px |
-| 03     | 使用场景     |              | 970×600 px |
-| 04     | 产品规格图   |              | 300×300 px |
-| 05     | FAQ 图示     |              | 970×300 px |
+> _在此填写。_
+
+**情绪基调**（活力 / 温馨 / 专业 / 极简）：
+
+> _在此填写。_
 
 ---
 
-## 4. Infographic（产品信息图）
+## C 类：A+ 内容图（Enhanced Brand Content）
 
-> 用于展示技术参数、尺寸、材质、认证等结构化信息。
+> 用于 Amazon A+ / 品牌旗舰店。横幅比 970 × 600 px 或 970 × 300 px；模块型 600 × 600 px。
 
-| 字段                | 要求                                                               | 填写 |
-| ------------------- | ------------------------------------------------------------------ | ---- |
-| 数量                | 1–2 张                                                             |      |
-| 尺寸                | 1500×1500 px 或 1500×2000 px（竖版）                               |      |
-| 格式                | JPEG / PNG                                                         |      |
-| 背景                | 白底或浅灰（品牌规范）                                             |      |
-| 需要展示的参数      | 列出所有需要展示的规格字段（如：尺寸 / 重量 / 材质 / 认证标识）    |      |
-| 认证标识            | ☐ CE ☐ FCC ☐ RoHS ☐ FDA ☐ 其他：\_\_\_\_                           |      |
-| 参考竞品 ASIN       |                                                                    |      |
-| 特别说明            |                                                                    |      |
-| Cloudinary 交付路径 | `{env}/{brand}/listing/{platform_listing_id}/infographic/{01..02}` |      |
+| #   | 模块类型           | 尺寸         | 文件名约定               | 内容摘要 |
+| --- | ------------------ | ------------ | ------------------------ | -------- |
+| 1   | Banner（顶部横幅） | 970 × 600 px | `aplus-banner.jpg`       |          |
+| 2   | 功能对比图         | 600 × 600 px | `aplus-feature-01.jpg`   |          |
+| 3   | 使用步骤图         | 600 × 600 px | `aplus-step-01.jpg`      |          |
+| 4   | 卖点强调图         | 600 × 600 px | `aplus-highlight-01.jpg` |          |
 
-### Infographic 参数填写
+**文案内容**（最终确认后填入设计文件）：
 
-| 参数字段 | 数值/描述            |
-| -------- | -------------------- |
-| 产品尺寸 | L × W × H（单位：）  |
-| 产品重量 |                      |
-| 材质     |                      |
-| 颜色     |                      |
-| 包装内含 |                      |
-| 电气参数 | V / Hz / W（如适用） |
-| 认证     |                      |
-| 其他参数 |                      |
+> _在此填写标题、副标题、卖点文案（不超过 3 条/图）。_
 
 ---
 
-## 5. 验收清单（Acceptance Checklist）
+## D 类：Infographic（信息图）
 
-> 设计/外包交付后，运营在此打勾确认。
+> 用于详情页 or 差评对比；叠加文字说明产品规格/参数/优势。
 
-- [ ] 主图：白底、尺寸达标、无水印
-- [ ] 主图：产品占比 ≥ 85%
-- [ ] 副图：场景描述与需求一致，文字叠加无错别字
-- [ ] A+ 模块：尺寸符合各模块规格，品牌色调一致
-- [ ] Infographic：参数数据与 listing 一致，认证标识正确
-- [ ] 所有图片已上传 Cloudinary 至正确路径
-- [ ] Cloudinary 路径已回填至本需求单各节"交付路径"列
-- [ ] 已通知 Listing 运营更新 Amazon/Walmart 后台
+| #   | 尺寸               | 文件名约定    | 标注内容                     |
+| --- | ------------------ | ------------- | ---------------------------- |
+| 1   | **2000 × 2000 px** | `info-01.jpg` | 核心规格（尺寸/重量/材质）   |
+| 2   | 同上               | `info-02.jpg` | 使用注意事项 / 认证          |
+| 3   | 同上（可选）       | `info-03.jpg` | 与竞品对比（需研发提供数据） |
+
+**字体规范**（与品牌设计系统一致）：
+
+> - Homtone：Inter / Noto Sans
+> - Spoonlemon：Nunito / Poppins
+> - Davivy：DM Sans / Lato
+> - Tysun：Roboto / Open Sans
 
 ---
 
-## 6. 修改记录
+## 交付物清单
 
-| 日期 | 修改人 | 说明 |
-| ---- | ------ | ---- |
-|      |        |      |
+| 类型             | 数量              | 格式                  | 交付方式                                |
+| ---------------- | ----------------- | --------------------- | --------------------------------------- |
+| 主图             | ≥ 1 张，建议 2 张 | JPG（无损压缩）       | Cloudinary `/{brand}/{sku}/main-*.jpg`  |
+| 场景图           | 2–3 张            | JPG                   | Cloudinary `/{brand}/{sku}/scene-*.jpg` |
+| A+ 图            | 4–6 张            | JPG                   | Cloudinary `/{brand}/{sku}/aplus-*.jpg` |
+| Infographic      | 2–3 张            | JPG                   | Cloudinary `/{brand}/{sku}/info-*.jpg`  |
+| 原始文件（可选） | 与以上对应        | PSD / AI / Figma 链接 | Notion 页面或邮件附件                   |
+
+---
+
+## 审批流
+
+1. 运营填写 Brief → 提交设计
+2. 设计初稿 → 运营预审（1 个工作日内反馈）
+3. 设计修改（最多 2 轮）→ 运营终审
+4. 终稿上传 Cloudinary → 在 yaemartOS 商品页绑定 URL
+5. 归档 Brief（Notion 数据库记录状态：`draft / review / approved / archived`）
+
+---
+
+## 参考资源
+
+- ADR-007 Cloudinary 上传约束：`docs/adr/ADR-007-cloudinary.md`
+- 品牌设计系统：`docs/ui/A-design-system.md`
+- Amazon 主图政策（2025）：[Amazon Image Requirements](https://sellercentral.amazon.com/help/hub/reference/external/G1881)
+- Shared Types：`packages/shared-types/src/image-brief.ts`

@@ -1,17 +1,17 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@elastic/elasticsearch';
-import {
-  indexName,
-  LEGACY_PRODUCTS_INDEX,
-  OPS_INDEX_CONFIGS,
-  type OpsIndexName,
-} from './es-index-registry';
+import { OPS_INDEX_CONFIGS, indexName, resolveIndexEnv } from './es-index-registry';
+
+export type BootstrapResult = {
+  index: string;
+  created: boolean;
+};
 
 @Injectable()
 export class SearchService implements OnModuleInit {
   private readonly logger = new Logger(SearchService.name);
-  private esClient: Client | null = null;
+  private client: Client | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -21,62 +21,55 @@ export class SearchService implements OnModuleInit {
       this.logger.warn('ELASTICSEARCH_URL not set — search module disabled');
       return;
     }
-    this.esClient = new Client({ node });
+    this.client = new Client({ node });
     this.logger.log(`Elasticsearch client initialised → ${node}`);
   }
 
-  /**
-   * Returns the underlying ES client.
-   * Indexer services should call this and handle null (disabled) gracefully.
-   */
-  get client(): Client | null {
-    return this.esClient;
+  /** Returns the underlying ES client (throws if not initialised). */
+  getClient(): Client {
+    if (!this.client) {
+      throw new Error('Elasticsearch client not initialised');
+    }
+    return this.client;
+  }
+
+  /** Returns the env suffix used for all index names in this process. */
+  getIndexEnv(): string {
+    return resolveIndexEnv();
   }
 
   /**
-   * Bootstrap all three ADR-003 ops-domain indexes plus the legacy placeholder.
-   * Idempotent: skips creation if index already exists.
-   * Returns a summary of each index creation attempt.
+   * Bootstraps all three ops-domain indices defined in ADR-003.
+   * Idempotent — skips creation if the index already exists.
    */
-  async bootstrap(): Promise<{ results: Array<{ index: string; created: boolean }> }> {
-    if (!this.esClient) {
-      throw new Error('Elasticsearch client not initialised');
-    }
-
-    const results: Array<{ index: string; created: boolean }> = [];
+  async bootstrap(): Promise<BootstrapResult[]> {
+    const client = this.getClient();
+    const env = this.getIndexEnv();
+    const results: BootstrapResult[] = [];
 
     for (const { base, config } of OPS_INDEX_CONFIGS) {
-      const name = indexName(base as OpsIndexName);
-      const created = await this.ensureIndex(name, config);
-      results.push({ index: name, created });
+      const idx = indexName(base, env);
+      const exists = await client.indices.exists({ index: idx });
+      if (exists) {
+        results.push({ index: idx, created: false });
+        continue;
+      }
+
+      await client.indices.create({ index: idx, body: config as any });
+      this.logger.log(`Created index: ${idx}`);
+      results.push({ index: idx, created: true });
     }
 
-    // Keep legacy index alive during migration period (W4 backward compat)
-    const legacyCreated = await this.ensureIndex(LEGACY_PRODUCTS_INDEX, {
-      settings: { number_of_shards: 1, number_of_replicas: 0 },
-      mappings: {
-        dynamic: 'strict' as const,
-        properties: {
-          title: { type: 'text', analyzer: 'standard' },
-          brand: { type: 'keyword' },
-          asin: { type: 'keyword' },
-          status: { type: 'keyword' },
-          updatedAt: { type: 'date' },
-        },
-      },
-    });
-    results.push({ index: LEGACY_PRODUCTS_INDEX, created: legacyCreated });
-
-    return { results };
+    return results;
   }
 
   async health(): Promise<{ status: string; info?: Record<string, unknown> }> {
-    if (!this.esClient) {
+    if (!this.client) {
       return { status: 'disabled', info: { reason: 'ELASTICSEARCH_URL not set' } };
     }
 
     try {
-      const res = await this.esClient.cluster.health();
+      const res = await this.client.cluster.health();
       return {
         status: res.status === 'red' ? 'degraded' : 'up',
         info: {
@@ -91,15 +84,5 @@ export class SearchService implements OnModuleInit {
         info: { error: err instanceof Error ? err.message : String(err) },
       };
     }
-  }
-
-  private async ensureIndex(name: string, config: Record<string, unknown>): Promise<boolean> {
-    const exists = await this.esClient!.indices.exists({ index: name });
-    if (exists) {
-      return false;
-    }
-    await this.esClient!.indices.create({ index: name, body: config });
-    this.logger.log(`Created index: ${name}`);
-    return true;
   }
 }

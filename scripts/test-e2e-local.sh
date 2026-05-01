@@ -38,6 +38,7 @@ WEEK_MAP_w8="tests/e2e/w8-mcp-bridge.spec.ts"
 WEEK_MAP_w9="tests/e2e/w9-w10-listing-mvp.spec.ts"
 WEEK_MAP_w10="tests/e2e/w9-w10-listing-mvp.spec.ts"
 WEEK_MAP_w9w10="tests/e2e/w9-w10-listing-mvp.spec.ts"
+WEEK_MAP_w11="tests/e2e/w11-es-knowledge.spec.ts"
 WEEK_MAP_w12="tests/e2e/w12-homtone-path-a-migration.spec.ts"
 
 if [ $# -eq 0 ]; then
@@ -49,7 +50,7 @@ else
     key="WEEK_MAP_${week}"
     val="${!key:-}"
     if [ -z "$val" ]; then
-      echo "⚠ 未知 week: $week（可选：w4 w5 w6 w7 w8 w9 w10 w9w10 w12）"
+      echo "⚠ 未知 week: $week（可选：w4 w5 w6 w7 w8 w9 w10 w9w10 w11 w12）"
       exit 1
     fi
     FILES="$FILES $val"

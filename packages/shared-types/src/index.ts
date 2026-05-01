@@ -49,41 +49,5 @@ export interface ListingContent {
   searchTerms: string[];
 }
 
-// ─── Image Brief ─────────────────────────────────────────────────────────────
-
-export type ImageBriefStatus = 'draft' | 'in_review' | 'approved' | 'delivered';
-
-export type ImageAssetType = 'main' | 'secondary' | 'aplus' | 'infographic';
-
-export interface ImageAssetSlot {
-  type: ImageAssetType;
-  /** Cloudinary Public ID for the delivered asset (empty until delivered) */
-  cloudinaryPublicId?: string;
-  /** Width in pixels */
-  widthPx: number;
-  /** Height in pixels */
-  heightPx: number;
-  /** Intended quantity */
-  quantity: number;
-  notes?: string;
-}
-
-export interface ImageBrief {
-  /** Matches PostgreSQL Product.id */
-  productId: string;
-  brandId: BrandId;
-  platform: Platform;
-  /** Amazon ASIN or Walmart Item ID */
-  platformListingId: string;
-  status: ImageBriefStatus;
-  operator: string;
-  /** ISO date string YYYY-MM-DD */
-  deadline?: string;
-  assets: ImageAssetSlot[];
-  /** Free-form selling points per secondary image (index-aligned) */
-  secondaryImageCopy?: Array<{ headline: string; subtext?: string }>;
-  /** Key product specs to display in infographic */
-  specs?: Record<string, string>;
-  createdAt: string;
-  updatedAt?: string;
-}
+export type { ImageBrief, ImageBriefStatus, ImageAssetType, ImageAssetSpec } from './image-brief';
+export { AMAZON_EN_ASSET_SPECS } from './image-brief';
