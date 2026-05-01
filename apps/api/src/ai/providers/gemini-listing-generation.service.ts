@@ -60,7 +60,7 @@ export class GeminiListingGenerationService implements IListingGenerationService
       prompt,
     });
 
-    const content: ListingContent = object;
+    const content = object as ListingContent;
 
     const validation = validateListingContent(content);
     if (!validation.valid) {

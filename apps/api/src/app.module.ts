@@ -11,6 +11,7 @@ import { TenantGuard } from './common/tenant/tenant.guard';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { CategoryModule } from './category/category.module';
+import { ListingModule } from './listing/listing.module';
 import { ProductModule } from './product/product.module';
 import { SearchModule } from './search/search.module';
 import { ShopModule } from './shop/shop.module';
@@ -49,6 +50,7 @@ import { ShopModule } from './shop/shop.module';
     SearchModule,
     CategoryModule,
     ProductModule,
+    ListingModule,
     ShopModule,
   ],
   providers: [
