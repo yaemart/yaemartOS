@@ -1,0 +1,11 @@
+sample_id,brand,platform,locale,product_id,product_name,category,traffic_strategy,listing_version,notes
+LS-001,homtone,amazon,en,PRD-001,6QT Slow Cooker,slow_cooker,primary,v1,S1 基线样本
+LS-002,homtone,amazon,en,PRD-001,6QT Slow Cooker,slow_cooker,keyword_grab,v1,同产品 keyword_grab 版本对比
+LS-003,homtone,amazon,en,PRD-002,4QT Slow Cooker,slow_cooker,primary,v1,
+LS-004,homtone,amazon,en,PRD-003,8QT Slow Cooker,slow_cooker,primary,v1,
+LS-005,homtone,amazon,en,PRD-004,Slow Cooker Accessory Kit,accessories,bundle,v1,捆绑销售版本
+LS-006,spoonlemon,amazon,en,PRD-101,Electric Skillet 12-inch,electric_skillet,primary,v1,
+LS-007,spoonlemon,amazon,en,PRD-102,Non-stick Griddle,griddle,primary,v1,
+LS-008,homtone,amazon,en,PRD-001,6QT Slow Cooker,slow_cooker,primary,v2,v2 改版对比 v1
+LS-009,homtone,walmart,en,PRD-001,6QT Slow Cooker,slow_cooker,primary,v1,Walmart 版本对比 Amazon
+LS-010,homtone,amazon,en,PRD-005,Mini 2QT Slow Cooker,slow_cooker,seasonal,v1,季节限定版

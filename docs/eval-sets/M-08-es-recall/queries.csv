@@ -1,0 +1,31 @@
+query_id,locale,query_text,expected_top3_topics,index,min_relevant_in_top3,difficulty,notes
+ES-001,en,"how to clean slow cooker",cleaning_tips|ceramic_care|dishwasher_safe,ops-product_knowledge,2,easy,
+ES-002,en,"slow cooker not heating",troubleshooting|error_code|heating_element,ops-product_knowledge,2,medium,
+ES-003,en,"slow cooker timer setup",timer_usage|digital_display|settings,ops-product_knowledge,2,easy,
+ES-004,en,"how long to cook chicken breast on low",cooking_time|recipe|food_safety,ops-product_knowledge,2,medium,
+ES-005,en,"warranty registration process",warranty_registration|product_registration,ops-product_knowledge,1,easy,
+ES-006,en,"slow cooker error code E2",error_code|troubleshooting,ops-product_knowledge,2,medium,需要错误码文档入库
+ES-007,en,"BPA free materials ceramic",materials_safety|product_specs,ops-product_knowledge,2,easy,
+ES-008,en,"can i put slow cooker in dishwasher",cleaning|dishwasher_safe|ceramic_care,ops-product_knowledge,2,easy,与 ES-001 语义相近
+ES-009,en,"slow cooker burning smell",safety|troubleshooting,ops-product_knowledge,2,hard,安全问题需高召回
+ES-010,en,"return policy 30 days",return_window|return_process,ops-product_knowledge,1,easy,
+ES-011,en,"6QT capacity fill line",product_specs|capacity,ops-product_knowledge,2,easy,
+ES-012,en,"slow cooker crockpot difference",product_type|faq,ops-product_knowledge,1,medium,
+ES-013,en,"keep warm function temperature",keep_warm|temperature_settings,ops-product_knowledge,2,easy,
+ES-014,en,"how to make bone broth",recipe|cooking_tips,ops-product_knowledge,1,medium,
+ES-015,en,"overnight slow cooking safety",safety|auto_shutoff,ops-product_knowledge,2,hard,
+ES-016,en,"slow cooker wattage power consumption",product_specs|power,ops-product_knowledge,2,easy,
+ES-017,en,"warranty third party seller amazon",warranty_coverage|third_party,ops-product_knowledge,1,hard,
+ES-018,en,"replacement lid spare parts",accessories|spare_parts,ops-product_knowledge,1,medium,
+ES-019,en,"slow cooker recipe beginner",recipe|getting_started,ops-product_knowledge,2,easy,
+ES-020,en,"food keeps burning on high setting",troubleshooting|cooking_tips|temperature,ops-product_knowledge,2,medium,
+ES-021,en,"cómo limpiar la olla de cocción lenta",cleaning_tips|ceramic_care,ops-product_knowledge,2,easy,ES 西语 (S3+)
+ES-022,en,"comment enregistrer la garantie",warranty_registration,ops-product_knowledge,1,easy,FR 法语 (S3+)
+ES-023,en,"slow cooker e2 error fix repair",error_code|repair|troubleshooting,ops-product_knowledge,2,medium,长尾查询
+ES-024,en,"is ceramic insert oven safe",materials_safety|product_specs,ops-product_knowledge,1,hard,常见误用场景
+ES-025,en,"recipe book pdf download",recipe_resource|manual,ops-product_knowledge,1,medium,
+ES-026,en,"homtone 6qt slow cooker review",product_review|faq,ops-product_knowledge,1,hard,评测类查询
+ES-027,en,"slow cooker vs instant pot comparison",product_type|faq,ops-product_knowledge,1,hard,竞品对比查询
+ES-028,en,"refund status where is my money",refund_timeline|order,ops-product_knowledge,1,medium,
+ES-029,en,"how to register warranty without receipt",warranty_without_receipt|warranty_registration,ops-product_knowledge,2,hard,
+ES-030,en,"cracked ceramic insert safe",safety|cracked_pot,ops-product_knowledge,2,hard,安全关键查询
