@@ -21,5 +21,22 @@
   "health": {
     "title": "yaemartOS",
     "subtitle": "Cross-border e-commerce operations system"
+  },
+  "shops": {
+    "title": "Shop Management",
+    "name": "Shop Name",
+    "brand": "Brand",
+    "platform": "Platform",
+    "lingxingShopId": "Lingxing Shop ID",
+    "syncEnabled": "Sync Enabled",
+    "actions": "Actions",
+    "bind": "Bind",
+    "unbind": "Unbind",
+    "bindShop": "Bind Lingxing Shop",
+    "selectShop": "Select a Lingxing shop",
+    "notBound": "Not Bound",
+    "empty": "No shops found",
+    "syncToggled": "Sync status updated",
+    "bindSuccess": "Shop bound successfully"
   }
 }

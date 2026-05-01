@@ -1,1 +1,19 @@
-{}
+{
+  "shops": {
+    "title": "Gestión de Tiendas",
+    "name": "Nombre de Tienda",
+    "brand": "Marca",
+    "platform": "Plataforma",
+    "lingxingShopId": "ID Tienda Lingxing",
+    "syncEnabled": "Sincronización Activa",
+    "actions": "Acciones",
+    "bind": "Vincular",
+    "unbind": "Desvincular",
+    "bindShop": "Vincular Tienda Lingxing",
+    "selectShop": "Seleccionar tienda Lingxing",
+    "notBound": "No Vinculada",
+    "empty": "No se encontraron tiendas",
+    "syncToggled": "Estado de sincronización actualizado",
+    "bindSuccess": "Tienda vinculada exitosamente"
+  }
+}
