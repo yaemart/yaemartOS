@@ -1,8 +1,4 @@
-DO $$ BEGIN
-  ALTER TYPE "public"."ProductContentSource" ADD VALUE IF NOT EXISTS 'category_inherit';
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TYPE "public"."ProductContentSource" ADD VALUE IF NOT EXISTS 'category_inherit';
 
 ALTER TABLE "public"."Category"
   ADD COLUMN IF NOT EXISTS "requiresRecipe" BOOLEAN NOT NULL DEFAULT false;
