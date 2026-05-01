@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -72,7 +72,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -129,7 +129,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -137,6 +137,10 @@ jobs:
 
       - name: Build workspace package (lingxing-client)
         run: pnpm --filter @yaemartos/lingxing-client build
+
+      - name: Prisma generate (api)
+        working-directory: apps/api
+        run: pnpm exec prisma generate
 
       - name: Build (web)
         run: pnpm --filter @yaemartos/web build
@@ -184,7 +188,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
