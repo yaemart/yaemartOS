@@ -1,0 +1,55 @@
+// Tenant-domain schema template (W2).
+// NOTE: This file is documentation/template only.
+// Runtime migration for all tenants is executed by scripts/migrate-all-schemas.js.
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["homtone", "spoonlemon", "davivy", "tysun"]
+}
+
+model Customer {
+  id        String   @id
+  email     String
+  phone     String?
+  createdAt DateTime @default(now())
+
+  warranties WarrantyRegistration[]
+  tickets    Ticket[]
+
+  @@schema("homtone")
+}
+
+model WarrantyRegistration {
+  id           String   @id
+  customerId   String
+  productSku   String
+  status       String
+  registeredAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@schema("homtone")
+}
+
+model OrderLookup {
+  id          String   @id
+  customerId  String?
+  orderNumber String
+  channel     String?
+  createdAt   DateTime @default(now())
+
+  @@schema("homtone")
+}
+
+model Ticket {
+  id          String   @id
+  customerId  String
+  ticketNo    String
+  subject     String
+  status      String
+  createdAt   DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@schema("homtone")
+}
