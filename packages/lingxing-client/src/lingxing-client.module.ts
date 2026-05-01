@@ -4,6 +4,7 @@ import { LingxingClient } from './lingxing-client';
 import { LingxingClientOptions } from './lingxing-client.options';
 import { AuthManager } from './client/auth-manager';
 import { HttpTransport } from './client/http-transport';
+import { LingxingMcpBridge } from './mcp/mcp-bridge';
 
 export const LINGXING_CLIENT_OPTIONS = Symbol('LINGXING_CLIENT_OPTIONS');
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
@@ -26,8 +27,9 @@ export class LingxingClientModule {
         AuthManager,
         HttpTransport,
         LingxingClient,
+        LingxingMcpBridge,
       ],
-      exports: [LingxingClient, LINGXING_CLIENT_OPTIONS, REDIS_CLIENT],
+      exports: [LingxingClient, LingxingMcpBridge, LINGXING_CLIENT_OPTIONS, REDIS_CLIENT],
     };
   }
 }

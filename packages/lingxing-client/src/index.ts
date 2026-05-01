@@ -28,3 +28,10 @@ export { ShopsOperations } from './operations/shops';
 export type { LingxingListingRaw, MappedListing } from './types/listing.types';
 export type { LingxingInventoryRaw, MappedInventory } from './types/inventory.types';
 export type { LingxingShopRaw, MappedShop } from './types/shop.types';
+
+export { LingxingMcpBridge } from './mcp/mcp-bridge';
+export type {
+  QueryInventoryParams,
+  GetListingSummaryParams,
+  GetKeywordSuggestionsParams,
+} from './mcp/mcp-bridge';
