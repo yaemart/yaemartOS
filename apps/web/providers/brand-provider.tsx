@@ -4,6 +4,20 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 
 export type Brand = 'homtone' | 'spoonlemon' | 'davivy' | 'tysun';
 
+const STORAGE_KEY = 'yaemart-brand';
+const VALID_BRANDS: Brand[] = ['homtone', 'spoonlemon', 'davivy', 'tysun'];
+
+function readStoredBrand(fallback: Brand): Brand {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored && (VALID_BRANDS as string[]).includes(stored)) {
+    return stored as Brand;
+  }
+  return fallback;
+}
+
 interface BrandContextValue {
   brand: Brand;
   setBrand: (b: Brand) => void;
@@ -21,7 +35,14 @@ export function BrandProvider({
   children: ReactNode;
   initialBrand?: Brand;
 }) {
-  const [brand, setBrand] = useState<Brand>(initialBrand);
+  const [brand, setBrandState] = useState<Brand>(() => readStoredBrand(initialBrand));
+
+  const setBrand = (b: Brand) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, b);
+    }
+    setBrandState(b);
+  };
 
   return (
     <BrandContext.Provider value={{ brand, setBrand }}>
