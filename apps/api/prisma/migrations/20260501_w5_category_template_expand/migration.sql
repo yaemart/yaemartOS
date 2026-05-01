@@ -6,6 +6,38 @@
 -- All statements are fully idempotent (IF NOT EXISTS / DO-EXCEPTION).
 -- ============================================================
 
+-- Init tables (recover if init SQL was not committed)
+CREATE TABLE IF NOT EXISTS "public"."Brand" (
+  "id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "slug" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Brand_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Brand_slug_key" ON "public"."Brand"("slug");
+
+CREATE TABLE IF NOT EXISTS "public"."User" (
+  "id" TEXT NOT NULL,
+  "email" TEXT NOT NULL,
+  "brandId" TEXT NOT NULL,
+  "role" TEXT NOT NULL DEFAULT 'operator',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "public"."User"("email");
+
+CREATE TABLE IF NOT EXISTS "public"."Metric" (
+  "id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "value" DECIMAL(18,6) NOT NULL,
+  "unit" TEXT,
+  "brandId" TEXT,
+  "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Metric_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "Metric_name_recordedAt_idx" ON "public"."Metric"("name", "recordedAt");
+
 -- W2 types
 DO $$ BEGIN CREATE TYPE "public"."UserRole" AS ENUM ('admin', 'operator', 'viewer'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "public"."LocaleCode" AS ENUM ('en', 'es', 'fr', 'de', 'it'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
