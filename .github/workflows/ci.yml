@@ -87,26 +87,18 @@ jobs:
         env:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
 
-      - name: Diagnose migration state (pre-deploy)
-        run: |
-          psql postgresql://postgres:postgres@localhost:5432/yaemartos_test \
-            -c "SELECT migration_name, started_at, finished_at, applied_steps_count, rolled_back_at FROM _prisma_migrations ORDER BY started_at;" \
-            2>/dev/null && echo "--- _prisma_migrations exists above ---" \
-            || echo "_prisma_migrations table does not exist yet (fresh DB)"
-
-      - name: Reset migration state (ensure clean slate)
-        working-directory: apps/api
-        run: pnpm exec prisma migrate reset --force --skip-seed
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
-
       - name: Run Prisma migrations (public)
         working-directory: apps/api
         run: pnpm exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+
+      - name: Verify schema (post-deploy)
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432/yaemartos_test \
+            -c "\dt public.*" \
+            -c "SELECT migration_name, applied_steps_count FROM _prisma_migrations ORDER BY started_at;"
 
       - name: Run tenant schema migrations
         working-directory: apps/api
@@ -221,13 +213,6 @@ jobs:
         run: pnpm exec prisma generate
         env:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
-
-      - name: Reset migration state (ensure clean slate)
-        working-directory: apps/api
-        run: pnpm exec prisma migrate reset --force --skip-seed
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
 
       - name: Run Prisma migrations
         working-directory: apps/api
