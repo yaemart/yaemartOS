@@ -51,21 +51,14 @@ END $$;
 
 ALTER TABLE "public"."User" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
--- Only convert role column if it is still plain text
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_attribute a
-    JOIN pg_class c ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relname = 'User' AND a.attname = 'role'
-      AND pg_catalog.format_type(a.atttypid, a.atttypmod) = 'text'
-  ) THEN
-    ALTER TABLE "public"."User" ALTER COLUMN "role" DROP DEFAULT;
-    ALTER TABLE "public"."User" ALTER COLUMN "role" TYPE "public"."UserRole" USING "role"::text::"public"."UserRole";
-    ALTER TABLE "public"."User" ALTER COLUMN "role" SET DEFAULT 'operator';
-  END IF;
-END $$;
+-- Convert User.role from TEXT to UserRole enum.
+-- Direct SQL (no PL/pgSQL wrapper): avoids SPI type-visibility issues in some
+-- PostgreSQL versions when the target type was created earlier in the same transaction.
+-- Idempotent in PG 14+: DROP DEFAULT is a no-op when no default exists;
+-- ALTER COLUMN TYPE to the same enum type succeeds (table rewrite, no data loss).
+ALTER TABLE "public"."User" ALTER COLUMN "role" DROP DEFAULT;
+ALTER TABLE "public"."User" ALTER COLUMN "role" TYPE "public"."UserRole" USING "role"::text::"public"."UserRole";
+ALTER TABLE "public"."User" ALTER COLUMN "role" SET DEFAULT 'operator';
 
 ALTER TABLE "public"."Brand" ADD COLUMN IF NOT EXISTS "themeColor" TEXT;
 ALTER TABLE "public"."Brand" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;
