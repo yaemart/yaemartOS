@@ -24,11 +24,13 @@ export ELASTICSEARCH_URL="${ELASTICSEARCH_URL:-http://localhost:9200}"
 export LINGXING_APP_KEY="${LINGXING_APP_KEY:-mock-key}"
 export LINGXING_APP_SECRET="${LINGXING_APP_SECRET:-mock-secret}"
 export LINGXING_BASE_URL="${LINGXING_BASE_URL:-https://mock-lingxing.test}"
+export LINGXING_ALLOWED_SHOP_IDS="${LINGXING_ALLOWED_SHOP_IDS:-}"
 
 WEEK_MAP_w4="tests/e2e/w4-auth-admin.spec.ts tests/e2e/w4-permission-guard.spec.ts tests/e2e/w4-brand-switch.spec.ts tests/e2e/w4-es-health.spec.ts"
 WEEK_MAP_w5="tests/e2e/w5-category-crud.spec.ts"
 WEEK_MAP_w6="tests/e2e/w6-product-crud.spec.ts"
 WEEK_MAP_w7="tests/e2e/w7-lingxing-shop-binding.spec.ts"
+WEEK_MAP_w8="tests/e2e/w8-mcp-bridge.spec.ts"
 
 if [ $# -eq 0 ]; then
   echo "▶ 跑全量 e2e"
@@ -39,7 +41,7 @@ else
     key="WEEK_MAP_${week}"
     val="${!key:-}"
     if [ -z "$val" ]; then
-      echo "⚠ 未知 week: $week（可选：w4 w5 w6 w7）"
+      echo "⚠ 未知 week: $week（可选：w4 w5 w6 w7 w8）"
       exit 1
     fi
     FILES="$FILES $val"
