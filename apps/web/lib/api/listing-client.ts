@@ -151,3 +151,23 @@ export async function activateVersion(
     { method: 'PATCH', brand },
   );
 }
+
+export async function generateListingDraft(
+  accessToken: string,
+  listingId: string,
+  input: {
+    productTitle: string;
+    productCategory: string;
+    competitorUrls?: string[];
+    manualSellingPoints?: string;
+    categoryLexicon?: string[];
+    lingxingKeywordSeed?: string[];
+  },
+  brand?: string,
+) {
+  return request<ListingVersionItem>(`/listings/${listingId}/generate`, accessToken, {
+    method: 'POST',
+    body: input,
+    brand,
+  });
+}

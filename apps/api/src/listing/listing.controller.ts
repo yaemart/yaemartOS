@@ -2,9 +2,12 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -13,10 +16,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
+import type { GenerateListingInput } from '@yaemartos/shared-types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CasbinGuard } from '../iam/casbin.guard';
 import { RequirePolicy } from '../iam/require-policy.decorator';
+import type { IListingGenerationService } from '../ai/interfaces/listing-generation.interface';
+import { LISTING_GENERATION_SERVICE } from '../ai/tokens';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { ListingService } from './listing.service';
@@ -28,6 +35,9 @@ export class ListingController {
   constructor(
     private readonly listingService: ListingService,
     private readonly versionService: ListingVersionService,
+    @Inject(LISTING_GENERATION_SERVICE)
+    private readonly listingGeneration: IListingGenerationService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get()
@@ -70,6 +80,58 @@ export class ListingController {
   @RequirePolicy({ obj: 'listings', act: 'write', field: '*' })
   async remove(@Param('id') id: string, @Req() req: Request) {
     return this.listingService.remove(id, this.actor(req));
+  }
+
+  /**
+   * POST /listings/:id/generate
+   * Generates a new draft ListingVersion using the AI listing generation service.
+   * Guarded by feature flag FEATURE_LISTING_AI (set to 'true' to enable).
+   * AI output is always written as a draft version — never auto-activated (P0 audit rule).
+   */
+  @Post(':id/generate')
+  @RequirePolicy({ obj: 'listings', act: 'write', field: '*' })
+  @HttpCode(HttpStatus.CREATED)
+  async generateListing(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      productTitle: string;
+      productCategory: string;
+      competitorUrls?: string[];
+      manualSellingPoints?: string;
+      categoryLexicon?: string[];
+      lingxingKeywordSeed?: string[];
+    },
+    @Req() req: Request,
+  ) {
+    const featureEnabled = this.config.get<string>('FEATURE_LISTING_AI') === 'true';
+    if (!featureEnabled) {
+      throw new ForbiddenException(
+        'Listing AI generation is currently disabled (feature flag off)',
+      );
+    }
+
+    const listing = await this.listingService.getById(id);
+    if (!listing) {
+      throw new NotFoundException(`Listing not found: ${id}`);
+    }
+
+    const input: GenerateListingInput = {
+      brandId: listing.brandId as any,
+      platform: 'amazon',
+      productTitle: body.productTitle,
+      productCategory: body.productCategory,
+      targetLocale: listing.language as any,
+      competitorUrls: body.competitorUrls,
+      manualSellingPoints: body.manualSellingPoints,
+      categoryLexicon: body.categoryLexicon,
+      lingxingKeywordSeed: body.lingxingKeywordSeed,
+    };
+
+    const content = await this.listingGeneration.generateListing(input);
+    const actor = this.actor(req);
+
+    return this.versionService.createVersion(id, content, actor, 'draft');
   }
 
   @Get(':id/versions')

@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ChevronDown, Save } from 'lucide-react';
 import type { ListingItem, ListingVersionItem } from '@/lib/api/listing-client';
+import { generateListingDraft } from '@/lib/api/listing-client';
 import type { ListingVersion } from '@/lib/mock-data';
 import { VersionTimeline } from './version-timeline';
 import { ContentEditor } from './content-editor';
 import { AiCopilotPanel } from './ai-copilot-panel';
 import { GeneratingOverlay } from './generating-overlay';
+
+const AI_FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_LISTING_AI === 'true';
 
 type Props = {
   listing: ListingItem & { versions: ListingVersionItem[] };
@@ -53,19 +56,43 @@ export function ListingEditorShell({ listing, locale, accessToken, brandId }: Pr
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
 
-  function startGeneration() {
+  async function startGeneration() {
+    if (!AI_FEATURE_ENABLED) {
+      alert('AI 生成功能暂未启用（NEXT_PUBLIC_FEATURE_LISTING_AI=true 开启）');
+      return;
+    }
+
     setIsGenerating(true);
-    setGenerationProgress(0);
-    const interval = setInterval(() => {
-      setGenerationProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsGenerating(false);
-          return 100;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 600);
+    setGenerationProgress(10);
+
+    const progressInterval = setInterval(() => {
+      setGenerationProgress((prev) => Math.min(prev + Math.random() * 8, 88));
+    }, 800);
+
+    try {
+      const productTitle =
+        (listing.product as { title?: string } | undefined)?.title ?? listing.platformListingId;
+      await generateListingDraft(
+        accessToken,
+        listing.id,
+        {
+          productTitle,
+          productCategory: listing.platformId,
+        },
+        brandId,
+      );
+      setGenerationProgress(100);
+    } catch (err) {
+      console.error('Listing generation failed:', err);
+      alert('生成失败，请检查 GEMINI_API_KEY 配置');
+    } finally {
+      clearInterval(progressInterval);
+      setTimeout(() => {
+        setIsGenerating(false);
+        setGenerationProgress(0);
+        router.refresh();
+      }, 600);
+    }
   }
 
   function cancelGeneration() {
