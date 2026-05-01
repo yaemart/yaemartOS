@@ -1,4 +1,5 @@
 -- W2 domain model migration (public schema)
+-- All statements are idempotent (IF NOT EXISTS / DO-EXCEPTION) to survive re-runs.
 
 DO $$ BEGIN
   CREATE TYPE "public"."UserRole" AS ENUM ('admin', 'operator', 'viewer');
@@ -49,25 +50,46 @@ EXCEPTION
 END $$;
 
 ALTER TABLE "public"."User" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE "public"."User" ALTER COLUMN "role" DROP DEFAULT;
-ALTER TABLE "public"."User" ALTER COLUMN "role" TYPE "public"."UserRole" USING "role"::text::"public"."UserRole";
-ALTER TABLE "public"."User" ALTER COLUMN "role" SET DEFAULT 'operator';
+
+-- Only convert role column if it is still plain text
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute a
+    JOIN pg_class c ON c.oid = a.attrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'User' AND a.attname = 'role'
+      AND pg_catalog.format_type(a.atttypid, a.atttypmod) = 'text'
+  ) THEN
+    ALTER TABLE "public"."User" ALTER COLUMN "role" DROP DEFAULT;
+    ALTER TABLE "public"."User" ALTER COLUMN "role" TYPE "public"."UserRole" USING "role"::text::"public"."UserRole";
+    ALTER TABLE "public"."User" ALTER COLUMN "role" SET DEFAULT 'operator';
+  END IF;
+END $$;
 
 ALTER TABLE "public"."Brand" ADD COLUMN IF NOT EXISTS "themeColor" TEXT;
 ALTER TABLE "public"."Brand" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;
 ALTER TABLE "public"."Brand" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
-ALTER TABLE "public"."Metric"
-  ADD CONSTRAINT "Metric_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Metric"
+    ADD CONSTRAINT "Metric_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."User"
-  ADD CONSTRAINT "User_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."User"
+    ADD CONSTRAINT "User_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE "public"."Category" (
+CREATE TABLE IF NOT EXISTS "public"."Category" (
   "id" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
   "parentId" TEXT,
@@ -79,7 +101,7 @@ CREATE TABLE "public"."Category" (
   CONSTRAINT "Category_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."CategoryContentTemplate" (
+CREATE TABLE IF NOT EXISTS "public"."CategoryContentTemplate" (
   "id" TEXT NOT NULL,
   "categoryId" TEXT NOT NULL,
   "locale" "public"."LocaleCode" NOT NULL,
@@ -91,7 +113,7 @@ CREATE TABLE "public"."CategoryContentTemplate" (
   CONSTRAINT "CategoryContentTemplate_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Product" (
+CREATE TABLE IF NOT EXISTS "public"."Product" (
   "id" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
   "categoryId" TEXT NOT NULL,
@@ -103,7 +125,7 @@ CREATE TABLE "public"."Product" (
   CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."ProductContent" (
+CREATE TABLE IF NOT EXISTS "public"."ProductContent" (
   "id" TEXT NOT NULL,
   "productId" TEXT NOT NULL,
   "locale" "public"."LocaleCode" NOT NULL,
@@ -115,7 +137,7 @@ CREATE TABLE "public"."ProductContent" (
   CONSTRAINT "ProductContent_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Market" (
+CREATE TABLE IF NOT EXISTS "public"."Market" (
   "id" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
   "code" TEXT NOT NULL,
@@ -127,7 +149,7 @@ CREATE TABLE "public"."Market" (
   CONSTRAINT "Market_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Article" (
+CREATE TABLE IF NOT EXISTS "public"."Article" (
   "id" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
   "marketId" TEXT NOT NULL,
@@ -139,7 +161,7 @@ CREATE TABLE "public"."Article" (
   CONSTRAINT "Article_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Platform" (
+CREATE TABLE IF NOT EXISTS "public"."Platform" (
   "id" TEXT NOT NULL,
   "code" "public"."PlatformCode" NOT NULL,
   "name" TEXT NOT NULL,
@@ -148,7 +170,7 @@ CREATE TABLE "public"."Platform" (
   CONSTRAINT "Platform_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Shop" (
+CREATE TABLE IF NOT EXISTS "public"."Shop" (
   "id" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
   "marketId" TEXT NOT NULL,
@@ -161,7 +183,7 @@ CREATE TABLE "public"."Shop" (
   CONSTRAINT "Shop_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."ShopBinding" (
+CREATE TABLE IF NOT EXISTS "public"."ShopBinding" (
   "id" TEXT NOT NULL,
   "shopId" TEXT NOT NULL,
   "bindingToken" TEXT NOT NULL,
@@ -171,7 +193,7 @@ CREATE TABLE "public"."ShopBinding" (
   CONSTRAINT "ShopBinding_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."Listing" (
+CREATE TABLE IF NOT EXISTS "public"."Listing" (
   "id" TEXT NOT NULL,
   "productId" TEXT NOT NULL,
   "brandId" TEXT NOT NULL,
@@ -192,7 +214,7 @@ CREATE TABLE "public"."Listing" (
   CONSTRAINT "Listing_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "public"."ListingVersion" (
+CREATE TABLE IF NOT EXISTS "public"."ListingVersion" (
   "id" TEXT NOT NULL,
   "listingId" TEXT NOT NULL,
   "versionNumber" INTEGER NOT NULL,
@@ -204,103 +226,188 @@ CREATE TABLE "public"."ListingVersion" (
   CONSTRAINT "ListingVersion_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "Category_brandId_slug_key" ON "public"."Category"("brandId", "slug");
-CREATE UNIQUE INDEX "CategoryContentTemplate_categoryId_locale_key" ON "public"."CategoryContentTemplate"("categoryId", "locale");
-CREATE UNIQUE INDEX "Product_brandId_sku_key" ON "public"."Product"("brandId", "sku");
-CREATE UNIQUE INDEX "ProductContent_productId_locale_source_key" ON "public"."ProductContent"("productId", "locale", "source");
-CREATE UNIQUE INDEX "Market_brandId_code_key" ON "public"."Market"("brandId", "code");
-CREATE UNIQUE INDEX "Article_marketId_slug_key" ON "public"."Article"("marketId", "slug");
-CREATE UNIQUE INDEX "Platform_code_key" ON "public"."Platform"("code");
-CREATE UNIQUE INDEX "Shop_platformId_externalId_key" ON "public"."Shop"("platformId", "externalId");
-CREATE UNIQUE INDEX "ShopBinding_shopId_key" ON "public"."ShopBinding"("shopId");
-CREATE UNIQUE INDEX "listing_platform_shop_listing_id_unique" ON "public"."Listing"("platformId", "shopId", "platformListingId");
-CREATE INDEX "Listing_productId_brandId_marketId_platformId_shopId_language_idx" ON "public"."Listing"("productId", "brandId", "marketId", "platformId", "shopId", "language");
-CREATE UNIQUE INDEX "ListingVersion_listingId_versionNumber_key" ON "public"."ListingVersion"("listingId", "versionNumber");
-CREATE UNIQUE INDEX "listing_primary_per_dimension_unique" ON "public"."Listing"("productId", "brandId", "marketId", "platformId", "shopId", "language") WHERE "isPrimary" = true;
-CREATE UNIQUE INDEX "listing_version_single_active_unique" ON "public"."ListingVersion"("listingId") WHERE "status" = 'active';
+CREATE UNIQUE INDEX IF NOT EXISTS "Category_brandId_slug_key" ON "public"."Category"("brandId", "slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "CategoryContentTemplate_categoryId_locale_key" ON "public"."CategoryContentTemplate"("categoryId", "locale");
+CREATE UNIQUE INDEX IF NOT EXISTS "Product_brandId_sku_key" ON "public"."Product"("brandId", "sku");
+CREATE UNIQUE INDEX IF NOT EXISTS "ProductContent_productId_locale_source_key" ON "public"."ProductContent"("productId", "locale", "source");
+CREATE UNIQUE INDEX IF NOT EXISTS "Market_brandId_code_key" ON "public"."Market"("brandId", "code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Article_marketId_slug_key" ON "public"."Article"("marketId", "slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "Platform_code_key" ON "public"."Platform"("code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Shop_platformId_externalId_key" ON "public"."Shop"("platformId", "externalId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ShopBinding_shopId_key" ON "public"."ShopBinding"("shopId");
+CREATE UNIQUE INDEX IF NOT EXISTS "listing_platform_shop_listing_id_unique" ON "public"."Listing"("platformId", "shopId", "platformListingId");
+CREATE INDEX IF NOT EXISTS "Listing_productId_brandId_marketId_platformId_shopId_language_idx" ON "public"."Listing"("productId", "brandId", "marketId", "platformId", "shopId", "language");
+CREATE UNIQUE INDEX IF NOT EXISTS "ListingVersion_listingId_versionNumber_key" ON "public"."ListingVersion"("listingId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS "listing_primary_per_dimension_unique" ON "public"."Listing"("productId", "brandId", "marketId", "platformId", "shopId", "language") WHERE "isPrimary" = true;
+CREATE UNIQUE INDEX IF NOT EXISTS "listing_version_single_active_unique" ON "public"."ListingVersion"("listingId") WHERE "status" = 'active';
 
-ALTER TABLE "public"."Category"
-  ADD CONSTRAINT "Category_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Category"
-  ADD CONSTRAINT "Category_parentId_fkey"
-  FOREIGN KEY ("parentId") REFERENCES "public"."Category"("id")
-  ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Category"
+    ADD CONSTRAINT "Category_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."CategoryContentTemplate"
-  ADD CONSTRAINT "CategoryContentTemplate_categoryId_fkey"
-  FOREIGN KEY ("categoryId") REFERENCES "public"."Category"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Category"
+    ADD CONSTRAINT "Category_parentId_fkey"
+    FOREIGN KEY ("parentId") REFERENCES "public"."Category"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."Product"
-  ADD CONSTRAINT "Product_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Product"
-  ADD CONSTRAINT "Product_categoryId_fkey"
-  FOREIGN KEY ("categoryId") REFERENCES "public"."Category"("id")
-  ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."CategoryContentTemplate"
+    ADD CONSTRAINT "CategoryContentTemplate_categoryId_fkey"
+    FOREIGN KEY ("categoryId") REFERENCES "public"."Category"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."ProductContent"
-  ADD CONSTRAINT "ProductContent_productId_fkey"
-  FOREIGN KEY ("productId") REFERENCES "public"."Product"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Product"
+    ADD CONSTRAINT "Product_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."Market"
-  ADD CONSTRAINT "Market_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Product"
+    ADD CONSTRAINT "Product_categoryId_fkey"
+    FOREIGN KEY ("categoryId") REFERENCES "public"."Category"("id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."Article"
-  ADD CONSTRAINT "Article_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Article"
-  ADD CONSTRAINT "Article_marketId_fkey"
-  FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."ProductContent"
+    ADD CONSTRAINT "ProductContent_productId_fkey"
+    FOREIGN KEY ("productId") REFERENCES "public"."Product"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."Shop"
-  ADD CONSTRAINT "Shop_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Shop"
-  ADD CONSTRAINT "Shop_marketId_fkey"
-  FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Shop"
-  ADD CONSTRAINT "Shop_platformId_fkey"
-  FOREIGN KEY ("platformId") REFERENCES "public"."Platform"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Market"
+    ADD CONSTRAINT "Market_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."ShopBinding"
-  ADD CONSTRAINT "ShopBinding_shopId_fkey"
-  FOREIGN KEY ("shopId") REFERENCES "public"."Shop"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Article"
+    ADD CONSTRAINT "Article_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."Listing"
-  ADD CONSTRAINT "Listing_productId_fkey"
-  FOREIGN KEY ("productId") REFERENCES "public"."Product"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Listing"
-  ADD CONSTRAINT "Listing_brandId_fkey"
-  FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Listing"
-  ADD CONSTRAINT "Listing_marketId_fkey"
-  FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Listing"
-  ADD CONSTRAINT "Listing_platformId_fkey"
-  FOREIGN KEY ("platformId") REFERENCES "public"."Platform"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."Listing"
-  ADD CONSTRAINT "Listing_shopId_fkey"
-  FOREIGN KEY ("shopId") REFERENCES "public"."Shop"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Article"
+    ADD CONSTRAINT "Article_marketId_fkey"
+    FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "public"."ListingVersion"
-  ADD CONSTRAINT "ListingVersion_listingId_fkey"
-  FOREIGN KEY ("listingId") REFERENCES "public"."Listing"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "public"."Shop"
+    ADD CONSTRAINT "Shop_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Shop"
+    ADD CONSTRAINT "Shop_marketId_fkey"
+    FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Shop"
+    ADD CONSTRAINT "Shop_platformId_fkey"
+    FOREIGN KEY ("platformId") REFERENCES "public"."Platform"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."ShopBinding"
+    ADD CONSTRAINT "ShopBinding_shopId_fkey"
+    FOREIGN KEY ("shopId") REFERENCES "public"."Shop"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Listing"
+    ADD CONSTRAINT "Listing_productId_fkey"
+    FOREIGN KEY ("productId") REFERENCES "public"."Product"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Listing"
+    ADD CONSTRAINT "Listing_brandId_fkey"
+    FOREIGN KEY ("brandId") REFERENCES "public"."Brand"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Listing"
+    ADD CONSTRAINT "Listing_marketId_fkey"
+    FOREIGN KEY ("marketId") REFERENCES "public"."Market"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Listing"
+    ADD CONSTRAINT "Listing_platformId_fkey"
+    FOREIGN KEY ("platformId") REFERENCES "public"."Platform"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."Listing"
+    ADD CONSTRAINT "Listing_shopId_fkey"
+    FOREIGN KEY ("shopId") REFERENCES "public"."Shop"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "public"."ListingVersion"
+    ADD CONSTRAINT "ListingVersion_listingId_fkey"
+    FOREIGN KEY ("listingId") REFERENCES "public"."Listing"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;

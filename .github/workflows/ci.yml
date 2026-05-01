@@ -85,7 +85,7 @@ jobs:
         working-directory: apps/api
         run: pnpm exec prisma generate
         env:
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
 
       - name: Run Prisma migrations (public)
         working-directory: apps/api
@@ -206,7 +206,7 @@ jobs:
         working-directory: apps/api
         run: pnpm exec prisma generate
         env:
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
 
       - name: Run Prisma migrations
         working-directory: apps/api

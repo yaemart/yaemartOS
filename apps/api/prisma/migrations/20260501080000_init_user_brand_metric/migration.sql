@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "public"."User" (
+CREATE TABLE IF NOT EXISTS "public"."User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "brandId" TEXT NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE "public"."User" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."Brand" (
+CREATE TABLE IF NOT EXISTS "public"."Brand" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE "public"."Brand" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."Metric" (
+CREATE TABLE IF NOT EXISTS "public"."Metric" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "value" DECIMAL(18,6) NOT NULL,
@@ -33,10 +33,10 @@ CREATE TABLE "public"."Metric" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "public"."User"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "public"."User"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Brand_slug_key" ON "public"."Brand"("slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "Brand_slug_key" ON "public"."Brand"("slug");
 
 -- CreateIndex
-CREATE INDEX "Metric_name_recordedAt_idx" ON "public"."Metric"("name", "recordedAt");
+CREATE INDEX IF NOT EXISTS "Metric_name_recordedAt_idx" ON "public"."Metric"("name", "recordedAt");
