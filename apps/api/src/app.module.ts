@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { LingxingClientModule } from '@yaemartos/lingxing-client';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 import { AiModule } from './ai/ai.module';
@@ -31,6 +32,12 @@ import { SearchModule } from './search/search.module';
     ClsModule.forRoot({
       global: true,
       middleware: { mount: true },
+    }),
+    LingxingClientModule.forRoot({
+      appKey: process.env.LINGXING_APP_KEY ?? '',
+      appSecret: process.env.LINGXING_APP_SECRET ?? '',
+      baseUrl: process.env.LINGXING_BASE_URL ?? 'https://openapi.lingxing.com',
+      redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     }),
     DatabaseModule,
     HealthModule,
