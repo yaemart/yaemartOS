@@ -1,8 +1,12 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
+import Redis from 'ioredis';
 import { LingxingClient } from './lingxing-client';
 import { LingxingClientOptions } from './lingxing-client.options';
+import { AuthManager } from './client/auth-manager';
+import { HttpTransport } from './client/http-transport';
 
 export const LINGXING_CLIENT_OPTIONS = Symbol('LINGXING_CLIENT_OPTIONS');
+export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
 @Global()
 @Module({})
@@ -15,9 +19,15 @@ export class LingxingClientModule {
           provide: LINGXING_CLIENT_OPTIONS,
           useValue: options,
         },
+        {
+          provide: REDIS_CLIENT,
+          useFactory: () => new Redis(options.redisUrl),
+        },
+        AuthManager,
+        HttpTransport,
         LingxingClient,
       ],
-      exports: [LingxingClient, LINGXING_CLIENT_OPTIONS],
+      exports: [LingxingClient, LINGXING_CLIENT_OPTIONS, REDIS_CLIENT],
     };
   }
 }

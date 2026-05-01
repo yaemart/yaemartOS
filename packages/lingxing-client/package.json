@@ -8,9 +8,12 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@nestjs/common": "^10.4.15"
+    "@nestjs/common": "^10.4.15",
+    "axios": "^1.7.0",
+    "ioredis": "^5.4.0"
   },
   "devDependencies": {
+    "@types/node": "^20.17.16",
     "vitest": "^2.1.9"
   }
 }

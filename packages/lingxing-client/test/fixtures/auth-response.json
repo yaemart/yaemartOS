@@ -1,0 +1,8 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "access_token": "mock-token-abc123",
+    "expires_in": 7200
+  }
+}
