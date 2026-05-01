@@ -21,7 +21,11 @@ export class SearchService implements OnModuleInit {
       this.logger.warn('ELASTICSEARCH_URL not set — search module disabled');
       return;
     }
-    this.client = new Client({ node });
+    // productCheck: false is required for OpenSearch (Bonsai) — the header
+    // X-Elastic-Product is not returned by OpenSearch; disabling avoids ProductNotSupportedError.
+    // The option exists in @elastic/elasticsearch v8 runtime but is absent from its TypeScript types.
+
+    this.client = new (Client as any)({ node, productCheck: false });
     this.logger.log(`Elasticsearch client initialised → ${node}`);
   }
 
