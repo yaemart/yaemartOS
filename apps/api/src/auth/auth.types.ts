@@ -1,4 +1,4 @@
-import type { AuthProvider, User } from '../../generated/prisma';
+import type { AuthProvider, User } from '../generated/prisma';
 
 export type AuthUser = Pick<User, 'id' | 'email' | 'brandId' | 'role'>;
 

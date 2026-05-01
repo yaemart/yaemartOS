@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { ListingStatus, LocaleCode, Prisma, ProductContentSource } from '../../generated/prisma';
+import { ListingStatus, LocaleCode, Prisma, ProductContentSource } from '../generated/prisma';
 import { CategoryService } from '../category/category.service';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';

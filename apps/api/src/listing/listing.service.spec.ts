@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { ListingStatus, TrafficStrategy } from '../../generated/prisma';
+import { ListingStatus, TrafficStrategy } from '../generated/prisma';
 import { describe, expect, it, vi } from 'vitest';
 import { ListingService } from './listing.service';
 

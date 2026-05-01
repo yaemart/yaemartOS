@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ListingStatus, TrafficStrategy, Prisma } from '../../generated/prisma';
+import { ListingStatus, TrafficStrategy, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';

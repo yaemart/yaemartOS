@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { LocaleCode, ProductContentSource } from '../../../generated/prisma';
+import { LocaleCode, ProductContentSource } from '../../generated/prisma';
 import { PrismaClientManager } from '../../database/prisma.service';
 import { CostTrackingService } from '../cost-tracking.service';
 import { GlmGenerationService } from './glm-generation.service';

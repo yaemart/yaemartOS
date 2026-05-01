@@ -1,4 +1,4 @@
-import { UserRole } from '../../../generated/prisma';
+import { UserRole } from '../../generated/prisma';
 import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class InviteUserDto {

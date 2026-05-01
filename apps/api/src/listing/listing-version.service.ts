@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ListingVersionStatus, Prisma } from '../../generated/prisma';
+import { ListingVersionStatus, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import type { ListingContent } from '@yaemartos/shared-types';

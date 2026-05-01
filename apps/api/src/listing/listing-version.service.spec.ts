@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ListingVersionStatus } from '../../generated/prisma';
+import { ListingVersionStatus } from '../generated/prisma';
 import { describe, expect, it, vi } from 'vitest';
 import { ListingVersionService } from './listing-version.service';
 
