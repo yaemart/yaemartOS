@@ -16,7 +16,6 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { GenerateListingInput } from '@yaemartos/shared-types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,6 +23,7 @@ import { CasbinGuard } from '../iam/casbin.guard';
 import { RequirePolicy } from '../iam/require-policy.decorator';
 import type { IListingGenerationService } from '../ai/interfaces/listing-generation.interface';
 import { LISTING_GENERATION_SERVICE } from '../ai/tokens';
+import { FeatureFlagService } from '../common/feature-flag/feature-flag.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { ListingService } from './listing.service';
@@ -37,7 +37,7 @@ export class ListingController {
     private readonly versionService: ListingVersionService,
     @Inject(LISTING_GENERATION_SERVICE)
     private readonly listingGeneration: IListingGenerationService,
-    private readonly config: ConfigService,
+    private readonly featureFlag: FeatureFlagService,
   ) {}
 
   @Get()
@@ -104,16 +104,16 @@ export class ListingController {
     },
     @Req() req: Request,
   ) {
-    const featureEnabled = this.config.get<string>('FEATURE_LISTING_AI') === 'true';
+    const listing = await this.listingService.getById(id);
+    if (!listing) {
+      throw new NotFoundException(`Listing not found: ${id}`);
+    }
+
+    const featureEnabled = this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
     if (!featureEnabled) {
       throw new ForbiddenException(
         'Listing AI generation is currently disabled (feature flag off)',
       );
-    }
-
-    const listing = await this.listingService.getById(id);
-    if (!listing) {
-      throw new NotFoundException(`Listing not found: ${id}`);
     }
 
     const input: GenerateListingInput = {
