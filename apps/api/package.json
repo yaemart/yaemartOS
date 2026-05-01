@@ -53,6 +53,9 @@
     "rxjs": "^7.8.1",
     "zod": "^4.4.1"
   },
+  "prisma": {
+    "seed": "ts-node --project tsconfig.json prisma/seed.ts"
+  },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@nestjs/testing": "^10.4.15",
