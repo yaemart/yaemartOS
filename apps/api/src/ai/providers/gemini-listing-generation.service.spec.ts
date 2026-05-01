@@ -37,7 +37,8 @@ function createService(apiKey?: string) {
     }),
   } as unknown as ConfigService;
 
-  return new GeminiListingGenerationService(config);
+  const mockCostTracking = { record: vi.fn().mockResolvedValue(undefined) } as any;
+  return new GeminiListingGenerationService(config, mockCostTracking);
 }
 
 const baseInput: GenerateListingInput = {

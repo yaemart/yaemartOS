@@ -8,6 +8,7 @@ import { assembleAmazonEnPrompt } from '../../listing/prompts/assemble-listing-p
 import { AMAZON_EN_LIMITS } from '../../listing/rules/amazon-en-limits';
 import { validateListingContent } from '../../listing/rules/validate-listing-content';
 import type { IListingGenerationService } from '../interfaces/listing-generation.interface';
+import { CostTrackingService } from '../cost-tracking.service';
 
 const ListingContentSchema = z.object({
   title: z.string().max(AMAZON_EN_LIMITS.TITLE_MAX_CHARS),
@@ -21,7 +22,10 @@ const ListingContentSchema = z.object({
 export class GeminiListingGenerationService implements IListingGenerationService {
   private readonly logger = new Logger(GeminiListingGenerationService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly costTracking: CostTrackingService,
+  ) {}
 
   async helloWorld(): Promise<string> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
@@ -54,10 +58,21 @@ export class GeminiListingGenerationService implements IListingGenerationService
     const prompt = assembleAmazonEnPrompt(input);
     this.logger.log(`Generating listing for product="${input.productTitle}" model=${modelId}`);
 
-    const { object } = await generateObject({
+    const start = Date.now();
+    const { object, usage } = await generateObject({
       model: google(modelId),
       schema: ListingContentSchema,
       prompt,
+    });
+    const durationMs = Date.now() - start;
+
+    void this.costTracking.record({
+      model: modelId,
+      taskType: 'listing',
+      brandId: input.brandId,
+      promptTokens: usage?.promptTokens ?? 0,
+      completionTokens: usage?.completionTokens ?? 0,
+      durationMs,
     });
 
     const content = object as ListingContent;

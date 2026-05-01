@@ -4,6 +4,7 @@ import { GlmGenerationService } from './providers/glm-generation.service';
 import { FaqGenerationService } from './providers/faq-generation.service';
 import { LingxingMcpToolService } from './providers/lingxing-mcp-tool.service';
 import { ModelRouterService } from './model-router.service';
+import { CostTrackingService } from './cost-tracking.service';
 import { AiController } from './ai.controller';
 import {
   LISTING_GENERATION_SERVICE,
@@ -29,6 +30,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
     GlmGenerationService,
     FaqGenerationService,
     ModelRouterService,
+    CostTrackingService,
     AuditService,
     LingxingMcpToolService,
     {
@@ -52,6 +54,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
     FAQ_GENERATION_SERVICE,
     GlmGenerationService,
     ModelRouterService,
+    CostTrackingService,
   ],
 })
 export class AiModule {}

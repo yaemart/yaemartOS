@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { LocaleCode, ProductContentSource } from '../../../generated/prisma';
 import { PrismaClientManager } from '../../database/prisma.service';
+import { CostTrackingService } from '../cost-tracking.service';
 import { GlmGenerationService } from './glm-generation.service';
 
 type FaqItem = {
@@ -29,6 +30,7 @@ export class FaqGenerationService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly glm: GlmGenerationService,
+    private readonly costTracking: CostTrackingService,
   ) {}
 
   async generateFaq(productId: string, locale: string): Promise<FaqPayload> {
@@ -72,6 +74,7 @@ export class FaqGenerationService {
 
     this.logger.log(`Generating FAQ for product=${productId} locale=${locale}`);
 
+    const start = Date.now();
     let rawText: string;
     try {
       rawText = await this.glm.generateText(prompt);
@@ -79,6 +82,16 @@ export class FaqGenerationService {
       this.logger.error(`GLM FAQ generation failed for product=${productId}`, err);
       throw new ServiceUnavailableException('FAQ generation service is temporarily unavailable');
     }
+    const durationMs = Date.now() - start;
+
+    void this.costTracking.record({
+      model: 'glm-4-flash',
+      taskType: 'faq',
+      brandId: product.brand?.slug,
+      promptTokens: Math.ceil(prompt.length / 4),
+      completionTokens: Math.ceil(rawText.length / 4),
+      durationMs,
+    });
 
     const faqs = this.parseFaqs(rawText);
 
