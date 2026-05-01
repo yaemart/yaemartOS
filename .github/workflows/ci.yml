@@ -141,6 +141,8 @@ jobs:
       - name: Prisma generate (api)
         working-directory: apps/api
         run: pnpm exec prisma generate
+        env:
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_build
 
       - name: Build (web)
         run: pnpm --filter @yaemartos/web build
