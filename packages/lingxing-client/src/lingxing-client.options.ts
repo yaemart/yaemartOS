@@ -5,4 +5,5 @@ export interface LingxingClientOptions {
   redisUrl: string;
   rateLimitRps?: number;
   cachePrefix?: string;
+  allowedShopIds?: string[];
 }

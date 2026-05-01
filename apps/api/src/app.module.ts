@@ -39,6 +39,7 @@ import { ShopModule } from './shop/shop.module';
       appSecret: process.env.LINGXING_APP_SECRET ?? '',
       baseUrl: process.env.LINGXING_BASE_URL ?? 'https://openapi.lingxing.com',
       redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
+      allowedShopIds: process.env.LINGXING_ALLOWED_SHOP_IDS?.split(',').filter(Boolean) ?? [],
     }),
     DatabaseModule,
     HealthModule,
