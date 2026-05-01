@@ -5,9 +5,9 @@ import { LingxingClientOptions } from './lingxing-client.options';
 import { AuthManager } from './client/auth-manager';
 import { HttpTransport } from './client/http-transport';
 import { LingxingMcpBridge } from './mcp/mcp-bridge';
+import { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from './tokens';
 
-export const LINGXING_CLIENT_OPTIONS = Symbol('LINGXING_CLIENT_OPTIONS');
-export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
+export { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from './tokens';
 
 @Global()
 @Module({})

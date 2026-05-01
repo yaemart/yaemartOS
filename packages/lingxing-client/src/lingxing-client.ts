@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { LingxingClientOptions } from './lingxing-client.options';
-import { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from './lingxing-client.module';
+import { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from './tokens';
 import { HttpTransport } from './client/http-transport';
 import { RateLimiter } from './decorators/rate-limiter';
 import { ListingsOperations } from './operations/listings';

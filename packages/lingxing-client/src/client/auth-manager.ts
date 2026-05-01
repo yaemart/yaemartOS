@@ -3,7 +3,7 @@ import axios from 'axios';
 import Redis from 'ioredis';
 import { AuthFailedError, NetworkError } from '../errors/lingxing-error';
 import { LingxingClientOptions } from '../lingxing-client.options';
-import { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from '../lingxing-client.module';
+import { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from '../tokens';
 
 const TOKEN_KEY = 'lingxing:token';
 const LOCK_KEY = 'lingxing:token:lock';

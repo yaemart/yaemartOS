@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { LingxingClient } from '../lingxing-client';
-import { LINGXING_CLIENT_OPTIONS } from '../lingxing-client.module';
+import { LINGXING_CLIENT_OPTIONS } from '../tokens';
 import { LingxingClientOptions } from '../lingxing-client.options';
 import { BusinessError } from '../errors/lingxing-error';
 import type { MappedInventory } from '../types/inventory.types';

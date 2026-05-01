@@ -7,12 +7,9 @@ export {
   NetworkError,
 } from './errors/lingxing-error';
 export { LingxingClientOptions } from './lingxing-client.options';
+export { LINGXING_CLIENT_OPTIONS, REDIS_CLIENT } from './tokens';
 export { LingxingClient } from './lingxing-client';
-export {
-  LingxingClientModule,
-  LINGXING_CLIENT_OPTIONS,
-  REDIS_CLIENT,
-} from './lingxing-client.module';
+export { LingxingClientModule } from './lingxing-client.module';
 export { AuthManager } from './client/auth-manager';
 export { HttpTransport } from './client/http-transport';
 export { RateLimiter } from './decorators/rate-limiter';

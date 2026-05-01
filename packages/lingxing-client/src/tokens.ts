@@ -1,0 +1,2 @@
+export const LINGXING_CLIENT_OPTIONS = Symbol('LINGXING_CLIENT_OPTIONS');
+export const REDIS_CLIENT = Symbol('REDIS_CLIENT');

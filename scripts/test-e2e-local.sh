@@ -14,6 +14,10 @@ set -euo pipefail
 #   3. Playwright browsers 已安装（pnpm exec playwright install chromium）
 # ─────────────────────────────────────────────────────────────
 
+# ── 构建 workspace 包（nest start 运行时需要 JS 产物）──────────
+echo "▶ 构建 @yaemartos/lingxing-client..."
+pnpm --filter @yaemartos/lingxing-client run build
+
 export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/yaemartos_dev}"
 export DIRECT_URL="${DIRECT_URL:-postgresql://postgres:postgres@localhost:5432/yaemartos_dev}"
 export GEMINI_API_KEY="${GEMINI_API_KEY:-mock-key}"
