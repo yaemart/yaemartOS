@@ -13,6 +13,7 @@ import { HealthModule } from './health/health.module';
 import { CategoryModule } from './category/category.module';
 import { ProductModule } from './product/product.module';
 import { SearchModule } from './search/search.module';
+import { ShopModule } from './shop/shop.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { SearchModule } from './search/search.module';
     SearchModule,
     CategoryModule,
     ProductModule,
+    ShopModule,
   ],
   providers: [
     {
