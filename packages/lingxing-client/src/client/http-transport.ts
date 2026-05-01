@@ -10,7 +10,7 @@ import {
 } from '../errors/lingxing-error';
 import { LingxingErrorCode } from '../errors/error-codes';
 import { LingxingClientOptions } from '../lingxing-client.options';
-import { LINGXING_CLIENT_OPTIONS } from '../lingxing-client.module';
+import { LINGXING_CLIENT_OPTIONS } from '../tokens';
 
 @Injectable()
 export class HttpTransport {
