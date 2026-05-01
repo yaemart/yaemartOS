@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.local.example
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Storybook
+storybook-static/
+
+# Prisma
+apps/api/generated/
+
+# Docker
+docker-compose.override.yml
+
+# pnpm
+.pnpm-store/

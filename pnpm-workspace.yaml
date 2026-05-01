@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/engines'
+  - '@sentry/cli'
+  - '@sentry/profiling-node'
+  - core-js-pure
+  - esbuild
+  - prisma
+  - sharp

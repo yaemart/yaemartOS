@@ -1,0 +1,16 @@
+# Copy this file to docker-compose.override.yml for local dev customization
+# docker-compose.override.yml is gitignored (contains local secrets)
+
+version: '3.9'
+
+services:
+  api:
+    environment:
+      # Override to use personal Neon dev database instead of local postgres:
+      # DATABASE_URL: postgresql://[user]:[pass]@[host]-pooler.neon.tech/[db]?sslmode=require&pgbouncer=true
+      # DIRECT_URL: postgresql://[user]:[pass]@[host].neon.tech/[db]?sslmode=require
+      GEMINI_API_KEY: your-gemini-key-here
+      CLOUDINARY_CLOUD_NAME: your-cloud-name
+      CLOUDINARY_API_KEY: your-api-key
+      CLOUDINARY_API_SECRET: your-api-secret
+      SENTRY_DSN: your-sentry-dsn

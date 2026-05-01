@@ -1,0 +1,157 @@
+pipeline:
+  name: yaemartOS CI
+  repo:
+    connector: account.github
+    name: yaemart/yaemartOS
+  clone:
+    depth: 1
+  on:
+    - push:
+        branches: [main, 'release/*']
+    - pull_request:
+        branches: [main]
+  env:
+    NODE_ENV: test
+    DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+    REDIS_URL: redis://localhost:6379
+  stages:
+    - name: lint-and-typecheck
+      runtime: cloud
+      platform:
+        os: linux
+        arch: arm
+      cache:
+        path: node_modules
+        key: pnpm.${{ hashFiles("pnpm-lock.yaml") }}
+      steps:
+        - run:
+            script: corepack enable && pnpm install --frozen-lockfile
+        - parallel:
+            steps:
+              - run:
+                  name: lint
+                  script: pnpm run lint
+              - run:
+                  name: typecheck-frontend
+                  script: pnpm --filter @yaemartos/web typecheck
+              - run:
+                  name: typecheck-backend
+                  script: pnpm --filter @yaemartos/api typecheck
+
+    - name: test
+      runtime: cloud
+      platform:
+        os: linux
+        arch: arm
+      cache:
+        path: node_modules
+        key: pnpm.${{ hashFiles("pnpm-lock.yaml") }}
+      steps:
+        - background:
+            container: postgres:16
+            env:
+              POSTGRES_DB: yaemartos_test
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: postgres
+        - background:
+            container: redis:7-alpine
+        - run:
+            script: corepack enable && pnpm install --frozen-lockfile
+        - run:
+            name: db-migrate
+            script: pnpm --filter @yaemartos/api db:migrate:test
+        - parallel:
+            steps:
+              - run-test:
+                  name: backend-tests
+                  script: pnpm --filter @yaemartos/api test --coverage
+                  report:
+                    type: junit
+                    path: apps/api/coverage/junit.xml
+              - run-test:
+                  name: frontend-tests
+                  script: pnpm --filter @yaemartos/web test --coverage
+                  report:
+                    type: junit
+                    path: apps/web/coverage/junit.xml
+
+    - name: build-and-push
+      if: ${{ branch == "main" || startsWith(branch, "release/") }}
+      runtime: cloud
+      platform:
+        os: linux
+        arch: arm
+      cache:
+        path: node_modules
+        key: pnpm.${{ hashFiles("pnpm-lock.yaml") }}
+      steps:
+        - run:
+            script: corepack enable && pnpm install --frozen-lockfile
+        - run:
+            name: build-frontend
+            script: pnpm --filter @yaemartos/web build
+        - run:
+            name: build-backend
+            script: pnpm --filter @yaemartos/api build
+        - template:
+            uses: buildAndPushToDocker
+            with:
+              connector: account.dockerhub
+              repo: yaemart/yaemartos-api
+              context: apps/api
+              tags:
+                - ${{ pipeline.sequenceId }}
+                - ${{ branch == "main" && "latest" || branch }}
+        - template:
+            uses: buildAndPushToDocker
+            with:
+              connector: account.dockerhub
+              repo: yaemart/yaemartos-web
+              context: apps/web
+              tags:
+                - ${{ pipeline.sequenceId }}
+                - ${{ branch == "main" && "latest" || branch }}
+
+    - name: deploy-staging
+      if: ${{ branch == "main" }}
+      service: yaemartos
+      environment: staging
+      steps:
+        - action:
+            uses: manifest-download
+        - action:
+            uses: manifest-bake
+        - action:
+            uses: kubernetes-rolling-deploy
+            with:
+              dry-run: false
+
+    - approval:
+        uses: harness
+        if: ${{ branch == "main" }}
+        with:
+          timeout: 24h
+          message: 'Staging 验证通过，批准部署到生产环境？'
+          groups: [prod-approvers]
+          min-approvers: 1
+
+    - name: deploy-production
+      if: ${{ branch == "main" }}
+      service: yaemartos
+      environment: production
+      steps:
+        - action:
+            uses: manifest-download
+        - action:
+            uses: manifest-bake
+        - action:
+            uses: kubernetes-rolling-deploy
+            with:
+              dry-run: false
+      on-failure:
+        errors: all
+        action:
+          retry:
+            attempts: 1
+            interval: 30s
+            failure-action: abort
