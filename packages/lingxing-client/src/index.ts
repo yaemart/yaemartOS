@@ -20,3 +20,11 @@ export { withRetry } from './decorators/retry';
 export type { RetryOptions } from './decorators/retry';
 export { withCache } from './decorators/cached';
 export type { CacheOptions } from './decorators/cached';
+
+export { ListingsOperations } from './operations/listings';
+export { InventoryOperations } from './operations/inventory';
+export { ShopsOperations } from './operations/shops';
+
+export type { LingxingListingRaw, MappedListing } from './types/listing.types';
+export type { LingxingInventoryRaw, MappedInventory } from './types/inventory.types';
+export type { LingxingShopRaw, MappedShop } from './types/shop.types';

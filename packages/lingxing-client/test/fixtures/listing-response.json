@@ -1,0 +1,22 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": [
+    {
+      "asin": "B09XYZ1234",
+      "seller_sku": "HT-SC-001",
+      "marketplace_id": "ATVPDKIKX0DER",
+      "title": "Homtone 6-Quart Slow Cooker",
+      "bullet_points": ["Easy to use", "Programmable timer", "Large capacity"],
+      "description": "A premium slow cooker for your kitchen.",
+      "search_terms": ["slow cooker", "programmable", "6 quart"],
+      "main_image_url": "https://images.example.com/main.jpg",
+      "other_images": ["https://images.example.com/side.jpg"],
+      "listing_status": "Active",
+      "price": "49.99",
+      "fulfillment_channel": "FBA",
+      "open_date": "2025-06-15T00:00:00Z",
+      "last_updated_time": "2026-04-28T10:30:00Z"
+    }
+  ]
+}

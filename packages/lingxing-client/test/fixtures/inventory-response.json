@@ -1,0 +1,17 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": [
+    {
+      "seller_sku": "HT-SC-001",
+      "asin": "B09XYZ1234",
+      "marketplace_id": "ATVPDKIKX0DER",
+      "fulfillable_quantity": 150,
+      "inbound_quantity": 50,
+      "reserved_quantity": 10,
+      "unfulfillable_quantity": 2,
+      "total_quantity": 212,
+      "days_of_supply": 45
+    }
+  ]
+}

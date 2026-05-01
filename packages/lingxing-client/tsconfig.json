@@ -1,7 +1,9 @@
 {
   "extends": "../../apps/api/tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true
   },
   "include": ["src/**/*", "test/**/*"]
 }
