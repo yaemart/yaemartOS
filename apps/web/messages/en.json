@@ -1,0 +1,25 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "products": "Products",
+    "listings": "Listings",
+    "orders": "Orders",
+    "settings": "Settings"
+  },
+  "health": {
+    "title": "yaemartOS",
+    "subtitle": "Cross-border e-commerce operations system"
+  }
+}
