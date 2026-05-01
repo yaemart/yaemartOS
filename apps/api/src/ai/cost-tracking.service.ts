@@ -37,7 +37,7 @@ export class CostTrackingService {
         (input.promptTokens / 1000) * pricing.input +
         (input.completionTokens / 1000) * pricing.output;
 
-      const prisma = this.prismaManager.getPublicClient() as any;
+      const prisma = this.prismaManager.getPublicClient();
       await prisma.aiCallLog.create({
         data: {
           model: input.model,
