@@ -176,6 +176,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
         env:
@@ -233,6 +242,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+          REDIS_URL: redis://localhost:6379
           PORT: 4000
           NODE_ENV: test
           GEMINI_API_KEY: mock-key-for-ci

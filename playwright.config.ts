@@ -34,6 +34,7 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         ...process.env,
+        PORT: '3000',
         NEXT_PUBLIC_API_URL: 'http://127.0.0.1:4000',
         CHOKIDAR_USEPOLLING: '1',
         WATCHPACK_POLLING: 'true',
