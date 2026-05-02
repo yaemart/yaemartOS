@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Settings,
   Shield,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBrand } from '@/providers/brand-provider';
@@ -25,6 +26,7 @@ const SIDEBAR_ITEMS = [
   { icon: Megaphone, label: '广告' },
   { icon: Users, label: '客服/工单' },
   { icon: GraduationCap, label: '培训' },
+  { icon: Upload, label: '数据导入' },
   { icon: Settings, label: '系统设置' },
   { icon: Shield, label: 'IAM 策略' },
 ];
