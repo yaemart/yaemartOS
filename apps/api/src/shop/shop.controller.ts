@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Logger,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CasbinGuard } from '../iam/casbin.guard';
@@ -10,6 +21,8 @@ import { UpdateBindingDto } from './dto/update-binding.dto';
 @Controller('shops')
 @UseGuards(JwtAuthGuard, CasbinGuard)
 export class ShopController {
+  private readonly logger = new Logger(ShopController.name);
+
   constructor(private readonly shopService: ShopService) {}
 
   @Get()
@@ -21,7 +34,12 @@ export class ShopController {
   @Get('lingxing-available')
   @RequirePolicy({ obj: 'shops', act: 'read' })
   async getLingxingShops() {
-    return this.shopService.getLingxingShops();
+    try {
+      return await this.shopService.getLingxingShops();
+    } catch (err) {
+      this.logger.warn(`Lingxing shops unavailable: ${String(err)}`);
+      return [];
+    }
   }
 
   @Post(':id/bind')

@@ -9,8 +9,8 @@ export default async function ShopsPage({ params }: { params: { locale: string }
   }
 
   const [shops, lingxingShops] = await Promise.all([
-    listShops(guard.accessToken, guard.user.brandId),
-    listLingxingShops(guard.accessToken, guard.user.brandId),
+    listShops(guard.accessToken, guard.user.brandId).catch(() => []),
+    listLingxingShops(guard.accessToken, guard.user.brandId).catch(() => []),
   ]);
 
   return (
