@@ -43,7 +43,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: '数据管理',
-    items: [{ icon: Upload, label: '数据导入', href: '/migration', capability: 'migration:write' }],
+    items: [{ icon: Upload, label: '数据导入', href: '/migration' }],
   },
   {
     title: '系统',
