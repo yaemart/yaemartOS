@@ -18,7 +18,6 @@ export class SearchController {
   ) {}
 
   @Get('health')
-  @UseGuards(JwtAuthGuard)
   async health() {
     return this.searchService.health();
   }
