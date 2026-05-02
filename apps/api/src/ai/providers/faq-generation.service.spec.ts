@@ -50,7 +50,13 @@ function makeService(opts: {
   } as unknown as GlmGenerationService;
 
   const mockCostTracking = { record: vi.fn().mockResolvedValue(undefined) } as any;
-  const service = new FaqGenerationService(mockPrismaManager, mockGlm, mockCostTracking);
+  const mockConfig = { get: vi.fn().mockReturnValue(undefined) } as any;
+  const service = new FaqGenerationService(
+    mockPrismaManager,
+    mockGlm,
+    mockCostTracking,
+    mockConfig,
+  );
   return { service, mockPrisma, mockGlm };
 }
 

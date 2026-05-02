@@ -31,10 +31,10 @@ export class HealthController {
    * Returns 503 when any dependency is degraded.
    */
   @Get('ready')
-  async ready(@Res({ passthrough: true }) res: Response) {
+  async ready(@Res({ passthrough: true }) res?: Response) {
     const result = await this.checkReady();
     if (result.status !== 'ok') {
-      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+      res?.status(HttpStatus.SERVICE_UNAVAILABLE);
     }
     return result;
   }
@@ -44,10 +44,10 @@ export class HealthController {
    * Kept for backward compatibility with existing clients and k6 scripts.
    */
   @Get()
-  async check(@Res({ passthrough: true }) res: Response) {
+  async check(@Res({ passthrough: true }) res?: Response) {
     const result = await this.checkReady();
     if (result.status !== 'ok') {
-      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+      res?.status(HttpStatus.SERVICE_UNAVAILABLE);
     }
     return result;
   }
