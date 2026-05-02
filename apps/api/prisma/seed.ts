@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma';
+import { PrismaClient } from '../src/generated/prisma';
+import { hash } from 'bcrypt';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -51,6 +52,25 @@ async function main() {
     });
   }
   console.log('Seeded 4 brands successfully.');
+
+  const adminEmail = 'admin@yaemartos.com';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@yaemartos2026!';
+  const passwordHash = await hash(adminPassword, 10);
+
+  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+  if (!existing) {
+    await prisma.user.create({
+      data: {
+        email: adminEmail,
+        passwordHash,
+        role: 'admin',
+        brandId: 'homtone',
+      },
+    });
+    console.log(`Seeded admin user: ${adminEmail} / ${adminPassword}`);
+  } else {
+    console.log(`Admin user already exists: ${adminEmail}`);
+  }
 }
 
 main()

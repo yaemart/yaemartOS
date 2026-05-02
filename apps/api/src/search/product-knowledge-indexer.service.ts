@@ -106,8 +106,8 @@ export class ProductKnowledgeIndexerService {
       return 0;
     }
 
-    const { errors } = await client.bulk({ body: operations, refresh: true });
-    if (errors) {
+    const { body: bulkRes } = await client.bulk({ body: operations, refresh: true });
+    if (bulkRes.errors) {
       this.logger.error(`Bulk index errors for product ${productId}`);
     }
 

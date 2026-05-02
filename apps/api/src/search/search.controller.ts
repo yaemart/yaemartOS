@@ -1,9 +1,10 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Query, UseGuards } from '@nestjs/common';
-import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { KeywordCorpusIndexerService, KeywordImportItem } from './keyword-corpus-indexer.service';
 import { SearchService } from './search.service';
 import { OPS_KEYWORD_CORPUS, OPS_LISTING_DRAFT, indexName } from './es-index-registry';
+
+type QueryClause = Record<string, unknown>;
 
 @Controller('search')
 export class SearchController {
@@ -43,11 +44,11 @@ export class SearchController {
     const client = this.searchService.getClient();
     const idx = indexName(OPS_LISTING_DRAFT, this.searchService.getIndexEnv());
 
-    const mustClauses: QueryDslQueryContainer[] = q
+    const mustClauses: QueryClause[] = q
       ? [{ multi_match: { query: q, fields: ['title^3', 'body_excerpt'], type: 'best_fields' } }]
       : [{ match_all: {} }];
 
-    const filterClauses: QueryDslQueryContainer[] = [{ term: { deleted_at: null } }];
+    const filterClauses: QueryClause[] = [{ term: { deleted_at: null } }];
     if (brandId) {
       filterClauses.push({ term: { brand_id: brandId } });
     }
@@ -55,7 +56,7 @@ export class SearchController {
       filterClauses.push({ term: { version_status: status } });
     }
 
-    const result = await client.search({
+    const { body: result } = await client.search({
       index: idx,
       from: Number(from),
       size: Math.min(Number(size), 100),
@@ -80,7 +81,7 @@ export class SearchController {
     this.logger.log(`listing-draft search latency=${latencyMs}ms hits=${result.hits.total}`);
 
     return {
-      hits: result.hits.hits.map((h) => ({ _id: h._id, ...(h._source as object) })),
+      hits: result.hits.hits.map((h: any) => ({ _id: h._id, ...h._source })),
       total: typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total,
       latencyMs,
     };
@@ -103,11 +104,11 @@ export class SearchController {
     const client = this.searchService.getClient();
     const idx = indexName(OPS_KEYWORD_CORPUS, this.searchService.getIndexEnv());
 
-    const mustClauses: QueryDslQueryContainer[] = q
+    const mustClauses: QueryClause[] = q
       ? [{ match: { keyword: { query: q, operator: 'and' } } }]
       : [{ match_all: {} }];
 
-    const filterClauses: QueryDslQueryContainer[] = [];
+    const filterClauses: QueryClause[] = [];
     if (brandId) {
       filterClauses.push({ term: { brand_id: brandId } });
     }
@@ -115,7 +116,7 @@ export class SearchController {
       filterClauses.push({ term: { platform } });
     }
 
-    const result = await client.search({
+    const { body: result } = await client.search({
       index: idx,
       from: Number(from),
       size: Math.min(Number(size), 200),
@@ -143,7 +144,7 @@ export class SearchController {
     this.logger.log(`keyword search latency=${latencyMs}ms hits=${result.hits.total}`);
 
     return {
-      hits: result.hits.hits.map((h) => ({ _id: h._id, ...(h._source as object) })),
+      hits: result.hits.hits.map((h: any) => ({ _id: h._id, ...h._source })),
       total: typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total,
       latencyMs,
     };

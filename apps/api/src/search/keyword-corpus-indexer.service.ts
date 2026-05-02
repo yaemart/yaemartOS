@@ -90,8 +90,8 @@ export class KeywordCorpusIndexerService {
         return [{ index: { _index: this.index, _id: docId } }, doc];
       });
 
-      const { errors } = await client.bulk({ body: operations, refresh: false });
-      if (errors) {
+      const { body: bulkRes } = await client.bulk({ body: operations, refresh: false });
+      if (bulkRes.errors) {
         this.logger.error(`Bulk errors in keyword import chunk offset=${offset}`);
       }
       total += chunk.length;

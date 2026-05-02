@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client } from '@elastic/elasticsearch';
+import { Client } from '@opensearch-project/opensearch';
 import { OPS_INDEX_CONFIGS, indexName, resolveIndexEnv } from './es-index-registry';
 
 export type BootstrapResult = {
@@ -21,18 +21,17 @@ export class SearchService implements OnModuleInit {
       this.logger.warn('ELASTICSEARCH_URL not set — search module disabled');
       return;
     }
-    // productCheck: false is required for OpenSearch (Bonsai) — the header
-    // X-Elastic-Product is not returned by OpenSearch; disabling avoids ProductNotSupportedError.
-    // The option exists in @elastic/elasticsearch v8 runtime but is absent from its TypeScript types.
-
-    this.client = new (Client as any)({ node, productCheck: false });
-    this.logger.log(`Elasticsearch client initialised → ${node}`);
+    // Use the official @opensearch-project/opensearch client to avoid
+    // @elastic/elasticsearch v8 compatibility issues (product check header +
+    // application/vnd.elasticsearch+json Content-Type) with Bonsai OpenSearch.
+    this.client = new Client({ node, ssl: { rejectUnauthorized: false } });
+    this.logger.log(`OpenSearch client initialised → ${node}`);
   }
 
-  /** Returns the underlying ES client (throws if not initialised). */
+  /** Returns the underlying client (throws if not initialised). */
   getClient(): Client {
     if (!this.client) {
-      throw new Error('Elasticsearch client not initialised');
+      throw new Error('OpenSearch client not initialised');
     }
     return this.client;
   }
@@ -53,7 +52,7 @@ export class SearchService implements OnModuleInit {
 
     for (const { base, config } of OPS_INDEX_CONFIGS) {
       const idx = indexName(base, env);
-      const exists = await client.indices.exists({ index: idx });
+      const { body: exists } = await client.indices.exists({ index: idx });
       if (exists) {
         results.push({ index: idx, created: false });
         continue;
@@ -73,7 +72,7 @@ export class SearchService implements OnModuleInit {
     }
 
     try {
-      const res = await this.client.cluster.health();
+      const { body: res } = await this.client.cluster.health();
       return {
         status: res.status === 'red' ? 'degraded' : 'up',
         info: {
