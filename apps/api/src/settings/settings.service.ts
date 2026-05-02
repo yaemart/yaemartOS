@@ -34,7 +34,7 @@ export class SettingsService {
   getConnectionHealth(): ConnectionHealth[] {
     const checks: Array<{ id: ConnectionId; label: string; envKey: string }> = [
       { id: 'gemini', label: 'Gemini Pro', envKey: 'GEMINI_API_KEY' },
-      { id: 'glm', label: '智谱 GLM-5', envKey: 'GLM_API_KEY' },
+      { id: 'glm', label: '智谱 GLM-5', envKey: 'ZHIPU_API_KEY' },
       { id: 'cloudinary', label: 'Cloudinary', envKey: 'CLOUDINARY_CLOUD_NAME' },
       { id: 'lingxing', label: '领星 OpenAPI', envKey: 'LINGXING_APP_KEY' },
       { id: 'opensearch', label: 'OpenSearch (Bonsai)', envKey: 'ELASTICSEARCH_URL' },

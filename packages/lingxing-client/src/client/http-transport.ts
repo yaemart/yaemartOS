@@ -22,14 +22,25 @@ export class HttpTransport {
   ) {
     this.client = axios.create({ baseURL: options.baseUrl });
 
-    this.client.interceptors.request.use(async (config) => {
-      const token = await this.authManager.getToken();
-      config.headers.Authorization = `Bearer ${token}`;
+    // Inject auth query params into every outbound request.
+    this.client.interceptors.request.use((config) => {
+      const authParams = this.authManager.getAuthParams();
+      config.params = { ...authParams, ...(config.params ?? {}) };
       return config;
     });
 
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Lingxing returns HTTP 200 even for business errors; surface them.
+        // Success codes: 0 (number), "0" (string), or no code field.
+        const data = response.data as { code?: string | number; msg?: string };
+        const code = data?.code;
+        const isSuccess = code === undefined || code === null || code === 0 || code === '0';
+        if (!isSuccess) {
+          throw new BusinessError(data.msg ?? `Business error ${code}`);
+        }
+        return response;
+      },
       (error: AxiosError) => {
         throw this.mapError(error);
       },

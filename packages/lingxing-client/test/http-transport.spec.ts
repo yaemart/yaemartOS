@@ -33,7 +33,12 @@ vi.mock('axios', async () => {
 
 function createAuthManagerMock() {
   return {
-    getToken: vi.fn().mockResolvedValue('test-token'),
+    getAuthParams: vi.fn().mockReturnValue({
+      app_key: 'test-key',
+      access_token: 'test-secret',
+      timestamp: '1700000000',
+      sign: 'abc123',
+    }),
   } as unknown as AuthManager;
 }
 
@@ -47,9 +52,8 @@ const options = {
 describe('HttpTransport', () => {
   let transport: HttpTransport;
   let authManager: ReturnType<typeof createAuthManagerMock>;
-  let requestInterceptor: (
-    config: InternalAxiosRequestConfig,
-  ) => Promise<InternalAxiosRequestConfig>;
+  let requestInterceptor: (config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig;
+  let responseSuccessHandler: (response: unknown) => unknown;
   let responseErrorHandler: (error: AxiosError) => never;
 
   beforeEach(() => {
@@ -59,31 +63,56 @@ describe('HttpTransport', () => {
     transport = new HttpTransport(options, authManager);
 
     requestInterceptor = mockRequestInterceptorUse.mock.calls[0][0];
+    responseSuccessHandler = mockResponseInterceptorUse.mock.calls[0][0];
     responseErrorHandler = mockResponseInterceptorUse.mock.calls[0][1];
   });
 
-  it('automatically includes Authorization header', async () => {
-    const config = { headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
-    const result = await requestInterceptor(config);
-    expect(result.headers.get('Authorization')).toBe('Bearer test-token');
+  it('injects auth query params into every request', () => {
+    const config = { headers: new AxiosHeaders(), params: {} } as InternalAxiosRequestConfig;
+    const result = requestInterceptor(config);
+    expect(result.params).toMatchObject({
+      app_key: 'test-key',
+      access_token: 'test-secret',
+      timestamp: '1700000000',
+      sign: 'abc123',
+    });
     expect(
-      (authManager as unknown as { getToken: ReturnType<typeof vi.fn> }).getToken,
+      (authManager as unknown as { getAuthParams: ReturnType<typeof vi.fn> }).getAuthParams,
     ).toHaveBeenCalled();
+  });
+
+  it('auth params do not override existing request params', () => {
+    const config = {
+      headers: new AxiosHeaders(),
+      params: { offset: 0, length: 20 },
+    } as InternalAxiosRequestConfig;
+    const result = requestInterceptor(config);
+    expect(result.params).toMatchObject({ offset: 0, length: 20, app_key: 'test-key' });
   });
 
   it('successful GET request returns data', async () => {
     mockRequest.mockResolvedValueOnce({
-      data: { items: [1, 2, 3] },
+      data: { code: 0, items: [1, 2, 3] },
     });
 
     const result = await transport.request('GET', '/api/data');
-    expect(result).toEqual({ items: [1, 2, 3] });
+    expect(result).toEqual({ code: 0, items: [1, 2, 3] });
     expect(mockRequest).toHaveBeenCalledWith({
       method: 'GET',
       url: '/api/data',
       params: undefined,
       data: undefined,
     });
+  });
+
+  it('throws BusinessError for Lingxing business error (HTTP 200 with non-zero code)', () => {
+    const response = { data: { code: '3001001', msg: 'missing query param' } };
+    expect(() => responseSuccessHandler(response)).toThrow(BusinessError);
+  });
+
+  it('passes through successful responses (code === 0)', () => {
+    const response = { data: { code: 0, data: [] } };
+    expect(responseSuccessHandler(response)).toBe(response);
   });
 
   it('maps HTTP 401 to AuthFailedError', () => {

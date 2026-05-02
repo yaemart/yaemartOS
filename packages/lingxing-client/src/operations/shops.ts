@@ -15,7 +15,7 @@ export class ShopsOperations {
       const response = await this.transport.request<{
         code: number;
         data: LingxingShopRaw[];
-      }>('GET', '/erp/sc/shops');
+      }>('POST', '/erp/sc/data/mws/shopList');
       if (!response.data || response.data.length === 0) {
         return [];
       }
