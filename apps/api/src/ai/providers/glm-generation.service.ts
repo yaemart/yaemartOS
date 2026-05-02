@@ -29,18 +29,27 @@ export class GlmGenerationService {
     const modelId = this.config.get<string>('GLM_MODEL') ?? 'glm-4-flash';
     this.logger.log(`Generating text with GLM model=${modelId}`);
 
-    const res = await fetch(`${GLM_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-      }),
-    });
+    const ac = new AbortController();
+    const timeoutHandle = setTimeout(() => ac.abort(), 30_000);
+
+    let res: globalThis.Response;
+    try {
+      res = await fetch(`${GLM_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+        }),
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
 
     if (!res.ok) {
       const body = await res.text();

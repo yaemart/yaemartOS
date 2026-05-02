@@ -7,7 +7,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -46,9 +45,10 @@ export class ListingController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('productId') productId?: string,
-    @Query('brandId') brandId?: string,
     @Query('status') status?: string,
+    @Req() req?: Request,
   ) {
+    const brandId: string | undefined = (req as any)?.resolvedBrandId;
     return this.listingService.list({
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
@@ -105,9 +105,6 @@ export class ListingController {
     @Req() req: Request,
   ) {
     const listing = await this.listingService.getById(id);
-    if (!listing) {
-      throw new NotFoundException(`Listing not found: ${id}`);
-    }
 
     const featureEnabled = this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
     if (!featureEnabled) {

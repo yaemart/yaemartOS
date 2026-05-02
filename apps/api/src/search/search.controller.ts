@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CasbinGuard } from '../iam/casbin.guard';
+import { RequirePolicy } from '../iam/require-policy.decorator';
 import { KeywordCorpusIndexerService, KeywordImportItem } from './keyword-corpus-indexer.service';
 import { SearchService } from './search.service';
 import { OPS_KEYWORD_CORPUS, OPS_LISTING_DRAFT, indexName } from './es-index-registry';
@@ -16,13 +18,15 @@ export class SearchController {
   ) {}
 
   @Get('health')
+  @UseGuards(JwtAuthGuard)
   async health() {
     return this.searchService.health();
   }
 
   @Post('bootstrap')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CasbinGuard)
+  @RequirePolicy({ obj: 'search', act: 'write', field: '*' })
   async bootstrap() {
     return this.searchService.bootstrap();
   }
@@ -32,7 +36,8 @@ export class SearchController {
    * GET /search/listing-draft?q=eco+friendly&brandId=homtone&status=draft
    */
   @Get('listing-draft')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CasbinGuard)
+  @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
   async searchListingDraft(
     @Query('q') q: string,
     @Query('brandId') brandId?: string,
@@ -48,7 +53,9 @@ export class SearchController {
       ? [{ multi_match: { query: q, fields: ['title^3', 'body_excerpt'], type: 'best_fields' } }]
       : [{ match_all: {} }];
 
-    const filterClauses: QueryClause[] = [{ term: { deleted_at: null } }];
+    const filterClauses: QueryClause[] = [
+      { bool: { must_not: [{ exists: { field: 'deleted_at' } }] } },
+    ];
     if (brandId) {
       filterClauses.push({ term: { brand_id: brandId } });
     }
@@ -92,7 +99,8 @@ export class SearchController {
    * GET /search/keywords?q=eco+friendly&brandId=homtone&platform=amazon
    */
   @Get('keywords')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CasbinGuard)
+  @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
   async searchKeywords(
     @Query('q') q: string,
     @Query('brandId') brandId?: string,
@@ -157,7 +165,8 @@ export class SearchController {
    */
   @Post('keywords/import')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CasbinGuard)
+  @RequirePolicy({ obj: 'listings', act: 'write', field: '*' })
   async importKeywords(@Body() body: { items: KeywordImportItem[] }) {
     const count = await this.keywordCorpusIndexer.importKeywords(body.items ?? []);
     return { imported: count };

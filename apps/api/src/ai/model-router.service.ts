@@ -22,17 +22,17 @@ export class ModelRouterService {
 
   getProviderType(taskType: AiTaskType, locale: string): AiProviderType {
     const envKey = `AI_TASK_ROUTER_${taskType.toUpperCase()}_${locale.toUpperCase()}`;
-    const override = this.config.get<string>(envKey);
+    const override = this.config.get<string>(envKey)?.toLowerCase();
     if (override === 'gemini' || override === 'glm') {
       this.logger.debug(`Router override: ${envKey}=${override}`);
-      return override;
+      return override as AiProviderType;
     }
 
     const taskKey = `AI_TASK_ROUTER_${taskType.toUpperCase()}`;
-    const taskOverride = this.config.get<string>(taskKey);
+    const taskOverride = this.config.get<string>(taskKey)?.toLowerCase();
     if (taskOverride === 'gemini' || taskOverride === 'glm') {
       this.logger.debug(`Router override: ${taskKey}=${taskOverride}`);
-      return taskOverride;
+      return taskOverride as AiProviderType;
     }
 
     return this.defaultRoute(taskType);

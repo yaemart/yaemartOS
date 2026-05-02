@@ -1,4 +1,5 @@
-import { Controller, Get, HttpCode, Optional } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Optional, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { PrismaClientManager } from '../database/prisma.service';
 import { TenantContextService } from '../common/tenant/tenant-context.service';
 import { SearchService } from '../search/search.service';
@@ -30,9 +31,12 @@ export class HealthController {
    * Returns 503 when any dependency is degraded.
    */
   @Get('ready')
-  @HttpCode(200)
-  async ready() {
-    return this.checkReady();
+  async ready(@Res({ passthrough: true }) res: Response) {
+    const result = await this.checkReady();
+    if (result.status !== 'ok') {
+      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return result;
   }
 
   /**
@@ -40,8 +44,12 @@ export class HealthController {
    * Kept for backward compatibility with existing clients and k6 scripts.
    */
   @Get()
-  async check() {
-    return this.checkReady();
+  async check(@Res({ passthrough: true }) res: Response) {
+    const result = await this.checkReady();
+    if (result.status !== 'ok') {
+      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return result;
   }
 
   private async checkReady() {

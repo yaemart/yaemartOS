@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LocaleCode, ProductContentSource } from '../../generated/prisma';
 import { PrismaClientManager } from '../../database/prisma.service';
 import { CostTrackingService } from '../cost-tracking.service';
@@ -31,6 +32,7 @@ export class FaqGenerationService {
     private readonly prismaManager: PrismaClientManager,
     private readonly glm: GlmGenerationService,
     private readonly costTracking: CostTrackingService,
+    private readonly config: ConfigService,
   ) {}
 
   async generateFaq(productId: string, locale: string): Promise<FaqPayload> {
@@ -84,8 +86,10 @@ export class FaqGenerationService {
     }
     const durationMs = Date.now() - start;
 
+    const glmModel = this.config.get<string>('GLM_MODEL') ?? 'glm-4-flash';
+
     void this.costTracking.record({
-      model: 'glm-4-flash',
+      model: glmModel,
       taskType: 'faq',
       brandId: product.brand?.slug,
       promptTokens: Math.ceil(prompt.length / 4),
@@ -95,11 +99,10 @@ export class FaqGenerationService {
 
     const faqs = this.parseFaqs(rawText);
 
-    const model = 'glm-4-flash';
     const payload: FaqPayload = {
       faqs,
       generatedAt: new Date().toISOString(),
-      model,
+      model: glmModel,
     };
 
     const localeCode = (
