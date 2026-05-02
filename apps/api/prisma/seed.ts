@@ -53,24 +53,21 @@ async function main() {
   }
   console.log('Seeded 4 brands successfully.');
 
-  const adminEmail = 'admin@yaemartos.com';
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@yaemartos2026!';
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? 'davidgao@yaemart.org';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Gaowen2004';
   const passwordHash = await hash(adminPassword, 10);
 
-  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
-  if (!existing) {
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        passwordHash,
-        role: 'admin',
-        brandId: 'homtone',
-      },
-    });
-    console.log(`Seeded admin user: ${adminEmail} / ${adminPassword}`);
-  } else {
-    console.log(`Admin user already exists: ${adminEmail}`);
-  }
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    create: {
+      email: adminEmail,
+      passwordHash,
+      role: 'admin',
+      brandId: 'homtone',
+    },
+    update: { passwordHash, role: 'admin' },
+  });
+  console.log(`Admin user ready: ${adminEmail}`);
 }
 
 main()

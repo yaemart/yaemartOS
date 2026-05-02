@@ -16,6 +16,7 @@ import { ProductModule } from './product/product.module';
 import { SearchModule } from './search/search.module';
 import { ShopModule } from './shop/shop.module';
 import { MigrationModule } from './migration/migration.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { MigrationModule } from './migration/migration.module';
     ListingModule,
     ShopModule,
     MigrationModule,
+    SettingsModule,
   ],
   providers: [
     {
