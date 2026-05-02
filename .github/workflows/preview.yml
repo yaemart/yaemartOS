@@ -1,8 +1,10 @@
 name: Preview Deploy
 
+# Disabled until NEON_API_KEY and NEON_PROJECT_ID are configured in repo secrets/vars.
+# Enable by removing the `if: false` condition below, or by replacing this block with the
+# original `on: pull_request` trigger once secrets are added.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch: # manual trigger only
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
