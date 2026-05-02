@@ -167,12 +167,14 @@ describe('ListingService', () => {
 
       const txUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
       const txUpdate = vi.fn().mockResolvedValue({ ...baseListing, isPrimary: true });
+      const txFindMany = vi.fn().mockResolvedValue([{ id: 'lst_other' }]);
 
       prisma.$transaction.mockImplementation(async (fn: any) =>
         fn({
           listing: {
             update: txUpdate,
             updateMany: txUpdateMany,
+            findMany: txFindMany,
           },
         }),
       );
@@ -213,6 +215,91 @@ describe('ListingService', () => {
       prisma.listing.findUnique.mockResolvedValue(null);
 
       await expect(service.remove('lst_1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('L1 audit before/after snapshots', () => {
+    it('create audit entry has before=null and after snapshot with id', async () => {
+      const { service, prisma, auditService } = createService();
+
+      prisma.$transaction.mockImplementation(async (fn: any) =>
+        fn({ listing: { create: vi.fn().mockResolvedValue(baseListing), updateMany: vi.fn() } }),
+      );
+      prisma.listing.findUnique.mockResolvedValue({ ...baseListing, versions: [], product: null });
+
+      await service.create(
+        {
+          productId: 'prd_1',
+          brandId: 'homtone',
+          marketId: 'mkt_1',
+          platformId: 'plt_1',
+          shopId: 'shp_1',
+          language: 'en' as any,
+          platformListingId: 'ASIN001',
+        },
+        { id: 'user_1', brandId: 'homtone' },
+      );
+
+      const call = (auditService.logWrite as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.metadata.before).toBeNull();
+      expect(call.metadata.after).toMatchObject({ id: 'lst_1' });
+    });
+
+    it('update audit entry has before != after when status changes', async () => {
+      const { service, prisma, auditService } = createService();
+      const beforeListing = { ...baseListing, status: ListingStatus.draft };
+      prisma.listing.findUnique.mockResolvedValue(beforeListing);
+
+      const afterListing = { ...baseListing, status: ListingStatus.review };
+      prisma.$transaction.mockImplementation(async (fn: any) =>
+        fn({
+          listing: {
+            update: vi.fn().mockResolvedValue(afterListing),
+            updateMany: vi.fn(),
+            findMany: vi.fn().mockResolvedValue([]),
+          },
+        }),
+      );
+
+      await service.update('lst_1', { status: 'review' });
+
+      const call = (auditService.logWrite as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.metadata.before.status).toBe(ListingStatus.draft);
+      expect(call.metadata.after.status).toBe(ListingStatus.review);
+      expect(call.metadata.changedFields).toContain('status');
+    });
+
+    it('update audit entry includes demotedIds when isPrimary=true', async () => {
+      const { service, prisma, auditService } = createService();
+      prisma.listing.findUnique.mockResolvedValue({ ...baseListing, status: ListingStatus.draft });
+
+      const txFindMany = vi.fn().mockResolvedValue([{ id: 'lst_other' }]);
+      const txUpdate = vi.fn().mockResolvedValue({ ...baseListing, isPrimary: true });
+      const txUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+
+      prisma.$transaction.mockImplementation(async (fn: any) =>
+        fn({ listing: { update: txUpdate, updateMany: txUpdateMany, findMany: txFindMany } }),
+      );
+
+      await service.update('lst_1', { isPrimary: true });
+
+      const call = (auditService.logWrite as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.metadata.demotedIds).toEqual(['lst_other']);
+    });
+
+    it('remove audit entry has before snapshot and after=null', async () => {
+      const { service, prisma, auditService } = createService();
+      prisma.listing.findUnique.mockResolvedValue({
+        ...baseListing,
+        status: ListingStatus.archived,
+      });
+      prisma.listing.delete.mockResolvedValue(baseListing);
+
+      await service.remove('lst_1', { id: 'user_1', brandId: 'homtone' });
+
+      const call = (auditService.logWrite as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.metadata.before).toMatchObject({ id: 'lst_1' });
+      expect(call.metadata.after).toBeNull();
     });
   });
 });

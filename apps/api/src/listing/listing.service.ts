@@ -15,6 +15,16 @@ type Actor = {
   brandId?: string;
 };
 
+/** Auditable field snapshot — excludes large text fields (bullets/description) to keep metadata compact. */
+type ListingSnapshot = {
+  id: string;
+  status: string;
+  title: string | null;
+  isPrimary: boolean;
+  trafficStrategy: string;
+  updatedAt: Date;
+};
+
 type ListListingsQuery = {
   page?: number;
   pageSize?: number;
@@ -126,7 +136,12 @@ export class ListingService {
         action: 'listing.create',
         entity: 'Listing',
         entityId: listing.id,
-        metadata: { productId: input.productId, brandId: input.brandId },
+        metadata: {
+          before: null,
+          after: this.snapshotListing(listing),
+          productId: input.productId,
+          brandId: input.brandId,
+        },
       });
 
       return this.getById(listing.id);
@@ -137,6 +152,7 @@ export class ListingService {
 
   async update(id: string, input: UpdateListingDto, actor?: Actor) {
     const listing = await this.assertExists(id);
+    const before = this.snapshotListing(listing);
 
     if (input.status !== undefined) {
       const allowed = ALLOWED_TRANSITIONS[listing.status] ?? [];
@@ -146,6 +162,8 @@ export class ListingService {
         );
       }
     }
+
+    let demotedIds: string[] = [];
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.listing.update({
@@ -164,7 +182,7 @@ export class ListingService {
       });
 
       if (input.isPrimary === true) {
-        await this.demoteOtherPrimaries(tx, id, {
+        demotedIds = await this.demoteOtherPrimaries(tx, id, {
           productId: listing.productId,
           brandId: listing.brandId,
           marketId: listing.marketId,
@@ -183,7 +201,12 @@ export class ListingService {
       action: 'listing.update',
       entity: 'Listing',
       entityId: id,
-      metadata: input,
+      metadata: {
+        before,
+        after: this.snapshotListing(updated),
+        changedFields: Object.keys(input),
+        ...(demotedIds.length > 0 ? { demotedIds } : {}),
+      },
     });
 
     return updated;
@@ -196,6 +219,7 @@ export class ListingService {
       throw new BadRequestException('Only archived listings can be deleted');
     }
 
+    const before = this.snapshotListing(listing);
     await this.prisma.listing.delete({ where: { id } });
 
     await this.auditService.logWrite({
@@ -204,9 +228,26 @@ export class ListingService {
       action: 'listing.delete',
       entity: 'Listing',
       entityId: id,
+      metadata: { before, after: null },
     });
 
     return { id, deleted: true };
+  }
+
+  private snapshotListing(
+    listing: Pick<
+      ListingSnapshot,
+      'id' | 'status' | 'title' | 'isPrimary' | 'trafficStrategy' | 'updatedAt'
+    >,
+  ): ListingSnapshot {
+    return {
+      id: listing.id,
+      status: listing.status,
+      title: listing.title,
+      isPrimary: listing.isPrimary,
+      trafficStrategy: listing.trafficStrategy,
+      updatedAt: listing.updatedAt,
+    };
   }
 
   private async assertExists(id: string) {
@@ -228,20 +269,23 @@ export class ListingService {
       shopId: string;
       language: string;
     },
-  ) {
-    await tx.listing.updateMany({
-      where: {
-        id: { not: excludeId },
-        productId: scope.productId,
-        brandId: scope.brandId,
-        marketId: scope.marketId,
-        platformId: scope.platformId,
-        shopId: scope.shopId,
-        language: scope.language as any,
-        isPrimary: true,
-      },
-      data: { isPrimary: false },
-    });
+  ): Promise<string[]> {
+    const where = {
+      id: { not: excludeId },
+      productId: scope.productId,
+      brandId: scope.brandId,
+      marketId: scope.marketId,
+      platformId: scope.platformId,
+      shopId: scope.shopId,
+      language: scope.language as any,
+      isPrimary: true,
+    };
+
+    const toBedemoted = await tx.listing.findMany({ where, select: { id: true } });
+    if (toBedemoted.length > 0) {
+      await tx.listing.updateMany({ where, data: { isPrimary: false } });
+    }
+    return toBedemoted.map((l) => l.id);
   }
 
   private rethrowConflict(error: unknown, fallback: string): never {
