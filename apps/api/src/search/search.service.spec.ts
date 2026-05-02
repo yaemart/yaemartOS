@@ -20,12 +20,12 @@ describe('SearchService', () => {
 
   it('throws when bootstrap called without client', async () => {
     await service.onModuleInit();
-    await expect(service.bootstrap()).rejects.toThrow('Elasticsearch client not initialised');
+    await expect(service.bootstrap()).rejects.toThrow('OpenSearch client not initialised');
   });
 
   it('throws when getClient called without client', async () => {
     await service.onModuleInit();
-    expect(() => service.getClient()).toThrow('Elasticsearch client not initialised');
+    expect(() => service.getClient()).toThrow('OpenSearch client not initialised');
   });
 
   it('getIndexEnv returns a non-empty string', () => {
