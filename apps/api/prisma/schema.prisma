@@ -1,6 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
-  output          = "../generated/prisma"
+  output = "../src/generated/prisma"
 }
 
 datasource db {
@@ -168,6 +168,25 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenant, action, createdAt])
+  @@schema("public")
+}
+
+/// Tracks every AI model call for cost attribution and monthly reporting.
+/// Written best-effort: failures are logged but never block AI responses.
+model AiCallLog {
+  id               String   @id @default(cuid())
+  model            String
+  taskType         String
+  brandId          String?
+  marketId         String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  estimatedCostUsd Decimal  @default(0) @db.Decimal(12, 8)
+  durationMs       Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([brandId, taskType, createdAt])
+  @@index([createdAt])
   @@schema("public")
 }
 

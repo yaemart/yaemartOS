@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LocaleCode, ListingStatus, Prisma, ProductContentSource } from '../../../generated/prisma';
+import { LocaleCode, ListingStatus, Prisma, ProductContentSource } from '../../generated/prisma';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaClientManager } from '../../database/prisma.service';
 import { pickLatestBySku } from './conflict-rules';

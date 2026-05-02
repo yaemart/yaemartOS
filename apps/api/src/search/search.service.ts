@@ -1,8 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client } from '@elastic/elasticsearch';
+import { Client } from '@opensearch-project/opensearch';
+import { OPS_INDEX_CONFIGS, indexName, resolveIndexEnv } from './es-index-registry';
 
-const DEFAULT_INDEX = 'yaemartos_products';
+export type BootstrapResult = {
+  index: string;
+  created: boolean;
+};
 
 @Injectable()
 export class SearchService implements OnModuleInit {
@@ -17,37 +21,49 @@ export class SearchService implements OnModuleInit {
       this.logger.warn('ELASTICSEARCH_URL not set — search module disabled');
       return;
     }
-    this.client = new Client({ node });
-    this.logger.log(`Elasticsearch client initialised → ${node}`);
+    // Use the official @opensearch-project/opensearch client to avoid
+    // @elastic/elasticsearch v8 compatibility issues (product check header +
+    // application/vnd.elasticsearch+json Content-Type) with Bonsai OpenSearch.
+    this.client = new Client({ node, ssl: { rejectUnauthorized: false } });
+    this.logger.log(`OpenSearch client initialised → ${node}`);
   }
 
-  async bootstrap(): Promise<{ created: boolean; index: string }> {
+  /** Returns the underlying client (throws if not initialised). */
+  getClient(): Client {
     if (!this.client) {
-      throw new Error('Elasticsearch client not initialised');
+      throw new Error('OpenSearch client not initialised');
+    }
+    return this.client;
+  }
+
+  /** Returns the env suffix used for all index names in this process. */
+  getIndexEnv(): string {
+    return resolveIndexEnv();
+  }
+
+  /**
+   * Bootstraps all three ops-domain indices defined in ADR-003.
+   * Idempotent — skips creation if the index already exists.
+   */
+  async bootstrap(): Promise<BootstrapResult[]> {
+    const client = this.getClient();
+    const env = this.getIndexEnv();
+    const results: BootstrapResult[] = [];
+
+    for (const { base, config } of OPS_INDEX_CONFIGS) {
+      const idx = indexName(base, env);
+      const { body: exists } = await client.indices.exists({ index: idx });
+      if (exists) {
+        results.push({ index: idx, created: false });
+        continue;
+      }
+
+      await client.indices.create({ index: idx, body: config as any });
+      this.logger.log(`Created index: ${idx}`);
+      results.push({ index: idx, created: true });
     }
 
-    const exists = await this.client.indices.exists({ index: DEFAULT_INDEX });
-    if (exists) {
-      return { created: false, index: DEFAULT_INDEX };
-    }
-
-    await this.client.indices.create({
-      index: DEFAULT_INDEX,
-      body: {
-        settings: { number_of_shards: 1, number_of_replicas: 0 },
-        mappings: {
-          properties: {
-            title: { type: 'text', analyzer: 'standard' },
-            brand: { type: 'keyword' },
-            asin: { type: 'keyword' },
-            status: { type: 'keyword' },
-            updatedAt: { type: 'date' },
-          },
-        },
-      },
-    });
-
-    return { created: true, index: DEFAULT_INDEX };
+    return results;
   }
 
   async health(): Promise<{ status: string; info?: Record<string, unknown> }> {
@@ -56,7 +72,7 @@ export class SearchService implements OnModuleInit {
     }
 
     try {
-      const res = await this.client.cluster.health();
+      const { body: res } = await this.client.cluster.health();
       return {
         status: res.status === 'red' ? 'degraded' : 'up',
         info: {

@@ -57,6 +57,27 @@ export class CasbinGuard implements CanActivate {
     }
 
     (req as any).allowedFields = field === '*' ? ['*'] : field.split(',').map((f) => f.trim());
+
+    const baseBrand = user.brandId ?? this.tenantContext.getTenant();
+    const headerBrand = this.readHeader(req, 'x-yaemart-brand', '');
+
+    if (headerBrand && headerBrand !== baseBrand) {
+      const brandAllowed = await this.casbinService.enforce({
+        sub: user.role,
+        obj: requirement.obj,
+        act: requirement.act,
+        brand: headerBrand,
+        market,
+        platform,
+        shop,
+        category,
+        field,
+      });
+      (req as any).resolvedBrandId = brandAllowed ? headerBrand : baseBrand;
+    } else {
+      (req as any).resolvedBrandId = baseBrand;
+    }
+
     return true;
   }
 

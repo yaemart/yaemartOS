@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { LocaleCode, Prisma } from '../../generated/prisma';
+import { LocaleCode, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';

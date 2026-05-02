@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { PrismaPg } from '@prisma/adapter-pg';
 import { TENANT_SCHEMAS, type TenantSchema, buildSchemaConnectionString } from '@yaemartos/db';
 import { Pool } from 'pg';
-import { PrismaClient } from '../../generated/prisma';
+import { PrismaClient } from '../generated/prisma';
 
 @Injectable()
 export class PrismaClientManager implements OnModuleInit, OnModuleDestroy {

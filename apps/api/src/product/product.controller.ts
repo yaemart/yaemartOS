@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -15,6 +16,8 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CasbinGuard } from '../iam/casbin.guard';
 import { RequirePolicy } from '../iam/require-policy.decorator';
+import { FAQ_GENERATION_SERVICE } from '../ai/tokens';
+import type { FaqGenerationService } from '../ai/providers/faq-generation.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -23,7 +26,10 @@ import { ProductService } from './product.service';
 @Controller('products')
 @UseGuards(JwtAuthGuard, CasbinGuard)
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(
+    private readonly productService: ProductService,
+    @Inject(FAQ_GENERATION_SERVICE) private readonly faqService: FaqGenerationService,
+  ) {}
 
   @Get()
   @RequirePolicy({ obj: 'products', act: 'read', field: '*' })
@@ -71,6 +77,12 @@ export class ProductController {
     @Req() req: Request,
   ) {
     return this.productService.updateContent(id, body, this.actor(req));
+  }
+
+  @Post(':id/faq')
+  @RequirePolicy({ obj: 'products', act: 'write', field: '*' })
+  async generateFaq(@Param('id') id: string, @Query('locale') locale: string = 'en') {
+    return this.faqService.generateFaq(id, locale);
   }
 
   @Delete(':id')

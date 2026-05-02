@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { ProductContentSource } from '../../generated/prisma';
+import { ProductContentSource } from '../generated/prisma';
 import { describe, expect, it, vi } from 'vitest';
 import { ProductService } from './product.service';
 

@@ -51,6 +51,44 @@ export class CasbinService implements OnModuleInit {
       '*',
       'allow',
     );
+    // Operator can perform any action on listings/products/categories within brand.
+    // Brand-dimension enforcement is handled by the Guard at request time.
+    await this.enforcer.addPolicy(
+      'operator',
+      'listings',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
+    await this.enforcer.addPolicy(
+      'operator',
+      'products',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
+    await this.enforcer.addPolicy(
+      'operator',
+      'categories',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
   }
 
   async enforce(input: EnforceInput): Promise<boolean> {

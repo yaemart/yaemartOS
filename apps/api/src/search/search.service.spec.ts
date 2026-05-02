@@ -22,4 +22,14 @@ describe('SearchService', () => {
     await service.onModuleInit();
     await expect(service.bootstrap()).rejects.toThrow('Elasticsearch client not initialised');
   });
+
+  it('throws when getClient called without client', async () => {
+    await service.onModuleInit();
+    expect(() => service.getClient()).toThrow('Elasticsearch client not initialised');
+  });
+
+  it('getIndexEnv returns a non-empty string', () => {
+    expect(typeof service.getIndexEnv()).toBe('string');
+    expect(service.getIndexEnv().length).toBeGreaterThan(0);
+  });
 });

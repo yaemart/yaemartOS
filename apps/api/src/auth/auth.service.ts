@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuthProvider, InvitationStatus, UserRole, type User } from '../../generated/prisma';
+import { AuthProvider, InvitationStatus, UserRole, type User } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { AuthUser, OauthProfile, TokenPair } from './auth.types';
