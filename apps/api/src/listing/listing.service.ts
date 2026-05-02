@@ -234,6 +234,62 @@ export class ListingService {
     return { id, deleted: true };
   }
 
+  async resolvePlatformId(platformCode: string): Promise<string> {
+    const platform = await this.prisma.platform.findUnique({
+      where: { code: platformCode as any },
+      select: { id: true },
+    });
+    if (!platform) {
+      throw new NotFoundException(`Platform not found: ${platformCode}`);
+    }
+    return platform.id;
+  }
+
+  /**
+   * Finds an existing draft Listing for the given scope, or creates one.
+   * Used by batch-generate to avoid duplicate records.
+   */
+  async findOrCreateDraft(input: {
+    productId: string;
+    brandId: string;
+    marketId: string;
+    platformId: string;
+    shopId: string;
+    language: string;
+    platformListingId: string;
+  }): Promise<{ id: string; brandId: string; language: string; isNew: boolean }> {
+    const existing = await this.prisma.listing.findFirst({
+      where: {
+        productId: input.productId,
+        shopId: input.shopId,
+        platformId: input.platformId,
+        language: input.language as any,
+      },
+      select: { id: true, brandId: true, language: true },
+    });
+
+    if (existing) {
+      return { ...existing, isNew: false };
+    }
+
+    const created = await this.prisma.listing.create({
+      data: {
+        productId: input.productId,
+        brandId: input.brandId,
+        marketId: input.marketId,
+        platformId: input.platformId,
+        shopId: input.shopId,
+        language: input.language as any,
+        platformListingId: input.platformListingId,
+        isPrimary: false,
+        trafficStrategy: TrafficStrategy.primary,
+      },
+      select: { id: true, brandId: true, language: true },
+    });
+
+    return { ...created, isNew: true };
+  }
+
   private snapshotListing(
     listing: Pick<
       ListingSnapshot,

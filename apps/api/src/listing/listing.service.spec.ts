@@ -9,10 +9,14 @@ function createService() {
       findMany: vi.fn(),
       count: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
       delete: vi.fn(),
+    },
+    platform: {
+      findUnique: vi.fn(),
     },
     $transaction: vi.fn(),
   };
@@ -215,6 +219,51 @@ describe('ListingService', () => {
       prisma.listing.findUnique.mockResolvedValue(null);
 
       await expect(service.remove('lst_1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('findOrCreateDraft', () => {
+    it('returns existing listing when one already exists for scope', async () => {
+      const { service, prisma } = createService();
+      const existing = { id: 'lst_1', brandId: 'homtone', language: 'en' };
+      prisma.listing.findFirst.mockResolvedValue(existing);
+
+      const result = await service.findOrCreateDraft({
+        productId: 'prd_1',
+        brandId: 'homtone',
+        marketId: 'mkt_1',
+        platformId: 'plt_1',
+        shopId: 'shp_1',
+        language: 'en',
+        platformListingId: 'ASIN001',
+      });
+
+      expect(result.isNew).toBe(false);
+      expect(result.id).toBe('lst_1');
+      expect(prisma.listing.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a new listing when none exists for scope', async () => {
+      const { service, prisma } = createService();
+      prisma.listing.findFirst.mockResolvedValue(null);
+      prisma.listing.create.mockResolvedValue({
+        id: 'lst_new',
+        brandId: 'homtone',
+        language: 'en',
+      });
+
+      const result = await service.findOrCreateDraft({
+        productId: 'prd_1',
+        brandId: 'homtone',
+        marketId: 'mkt_1',
+        platformId: 'plt_1',
+        shopId: 'shp_1',
+        language: 'en',
+        platformListingId: 'ASIN002',
+      });
+
+      expect(result.isNew).toBe(true);
+      expect(result.id).toBe('lst_new');
     });
   });
 
