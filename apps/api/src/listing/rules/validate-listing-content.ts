@@ -1,5 +1,6 @@
 import type { ListingContent } from '@yaemartos/shared-types';
-import { AMAZON_EN_LIMITS } from './amazon-en-limits';
+import { amazonEnRules } from './amazon-en-limits';
+import type { PlatformListingRules } from './platform-listing-rules.interface';
 
 export interface ListingViolation {
   field: string;
@@ -14,66 +15,96 @@ export interface ValidationResult {
 }
 
 /**
- * Validates a ListingContent object against Amazon EN character limits.
- * Returns structured violations so callers can surface specific field errors.
+ * Validates a ListingContent object against the supplied platform rules.
+ *
+ * When `rules` is omitted, Amazon EN limits are used as the default, preserving
+ * backward-compatible behaviour for all existing callers.
+ *
+ * Search-terms measurement:
+ *  - If `rules.searchTermsMaxBytes` is set → bytes (Amazon behaviour)
+ *  - If `rules.searchTermsMaxChars` is set → characters (Walmart behaviour)
  */
-export function validateListingContent(content: ListingContent): ValidationResult {
+export function validateListingContent(
+  content: ListingContent,
+  rules: PlatformListingRules = amazonEnRules,
+): ValidationResult {
   const violations: ListingViolation[] = [];
 
-  if (content.title.length > AMAZON_EN_LIMITS.TITLE_MAX_CHARS) {
+  // ── Title ──────────────────────────────────────────────────────────────────
+  if (content.title.length > rules.titleMaxChars) {
     violations.push({
       field: 'title',
-      message: `Title exceeds ${AMAZON_EN_LIMITS.TITLE_MAX_CHARS} characters`,
+      message: `Title exceeds ${rules.titleMaxChars} characters`,
       actual: content.title.length,
-      limit: AMAZON_EN_LIMITS.TITLE_MAX_CHARS,
+      limit: rules.titleMaxChars,
     });
   }
 
-  if (content.bullets.length > AMAZON_EN_LIMITS.BULLETS_MAX_COUNT) {
+  // ── Bullets / Key Features ─────────────────────────────────────────────────
+  if (content.bullets.length > rules.bulletsMaxCount) {
     violations.push({
       field: 'bullets',
-      message: `Too many bullet points: ${content.bullets.length} > ${AMAZON_EN_LIMITS.BULLETS_MAX_COUNT}`,
+      message: `Too many ${rules.bulletFieldLabel}: ${content.bullets.length} > ${rules.bulletsMaxCount}`,
       actual: content.bullets.length,
-      limit: AMAZON_EN_LIMITS.BULLETS_MAX_COUNT,
+      limit: rules.bulletsMaxCount,
     });
   }
 
   content.bullets.forEach((bullet, i) => {
-    if (bullet.length > AMAZON_EN_LIMITS.BULLET_MAX_CHARS) {
+    if (bullet.length > rules.bulletMaxChars) {
       violations.push({
         field: `bullets[${i}]`,
-        message: `Bullet ${i + 1} exceeds ${AMAZON_EN_LIMITS.BULLET_MAX_CHARS} characters`,
+        message: `${rules.bulletFieldLabel} ${i + 1} exceeds ${rules.bulletMaxChars} characters`,
         actual: bullet.length,
-        limit: AMAZON_EN_LIMITS.BULLET_MAX_CHARS,
+        limit: rules.bulletMaxChars,
       });
     }
   });
 
-  if (content.description.length > AMAZON_EN_LIMITS.DESCRIPTION_MAX_CHARS) {
+  // ── Description / Short Description ───────────────────────────────────────
+  if (content.description.length > rules.descriptionMaxChars) {
     violations.push({
       field: 'description',
-      message: `Description exceeds ${AMAZON_EN_LIMITS.DESCRIPTION_MAX_CHARS} characters`,
+      message: `${rules.descriptionFieldLabel} exceeds ${rules.descriptionMaxChars} characters`,
       actual: content.description.length,
-      limit: AMAZON_EN_LIMITS.DESCRIPTION_MAX_CHARS,
+      limit: rules.descriptionMaxChars,
     });
   }
 
-  const searchTermsBytes = Buffer.byteLength(content.searchTerms.join(' '), 'utf8');
-  if (searchTermsBytes > AMAZON_EN_LIMITS.SEARCH_TERMS_MAX_BYTES) {
-    violations.push({
-      field: 'searchTerms',
-      message: `Search terms exceed ${AMAZON_EN_LIMITS.SEARCH_TERMS_MAX_BYTES} bytes`,
-      actual: searchTermsBytes,
-      limit: AMAZON_EN_LIMITS.SEARCH_TERMS_MAX_BYTES,
-    });
+  // ── Search Terms / Search Keywords ─────────────────────────────────────────
+  if (rules.searchTermsMaxBytes !== undefined) {
+    const bytes = Buffer.byteLength(content.searchTerms.join(' '), 'utf8');
+    if (bytes > rules.searchTermsMaxBytes) {
+      violations.push({
+        field: 'searchTerms',
+        message: `${rules.searchTermsFieldLabel} exceed ${rules.searchTermsMaxBytes} bytes`,
+        actual: bytes,
+        limit: rules.searchTermsMaxBytes,
+      });
+    }
+  } else if (rules.searchTermsMaxChars !== undefined) {
+    const chars = content.searchTerms.join(' ').length;
+    if (chars > rules.searchTermsMaxChars) {
+      violations.push({
+        field: 'searchTerms',
+        message: `${rules.searchTermsFieldLabel} exceed ${rules.searchTermsMaxChars} characters`,
+        actual: chars,
+        limit: rules.searchTermsMaxChars,
+      });
+    }
   }
 
-  if (content.aPlus !== undefined && content.aPlus.length > AMAZON_EN_LIMITS.APLUS_MAX_CHARS) {
+  // ── A+ content (Amazon-only, optional) ────────────────────────────────────
+  if (
+    rules.aPlusMaxChars !== undefined &&
+    content.aPlus !== undefined &&
+    content.aPlus.length > rules.aPlusMaxChars
+  ) {
     violations.push({
       field: 'aPlus',
-      message: `A+ content exceeds ${AMAZON_EN_LIMITS.APLUS_MAX_CHARS} characters`,
+      message: `A+ content exceeds ${rules.aPlusMaxChars} characters`,
       actual: content.aPlus.length,
-      limit: AMAZON_EN_LIMITS.APLUS_MAX_CHARS,
+      limit: rules.aPlusMaxChars,
     });
   }
 

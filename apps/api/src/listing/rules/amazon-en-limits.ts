@@ -6,6 +6,8 @@
  * All character limits are measured as Unicode code points (consistent with
  * String.prototype.length for BMP characters, which covers all ASCII).
  */
+import type { PlatformListingRules } from './platform-listing-rules.interface';
+
 export const AMAZON_EN_LIMITS = {
   /** Max characters for the product title */
   TITLE_MAX_CHARS: 200,
@@ -31,3 +33,20 @@ export const AMAZON_EN_LIMITS = {
 } as const;
 
 export type AmazonEnField = keyof typeof AMAZON_EN_LIMITS;
+
+/**
+ * Amazon EN rules object that satisfies PlatformListingRules.
+ * Default rules used by `validateListingContent` when no rules are passed.
+ */
+export const amazonEnRules: PlatformListingRules = {
+  platformCode: 'amazon',
+  titleMaxChars: AMAZON_EN_LIMITS.TITLE_MAX_CHARS,
+  bulletsMaxCount: AMAZON_EN_LIMITS.BULLETS_MAX_COUNT,
+  bulletMaxChars: AMAZON_EN_LIMITS.BULLET_MAX_CHARS,
+  descriptionMaxChars: AMAZON_EN_LIMITS.DESCRIPTION_MAX_CHARS,
+  searchTermsMaxBytes: AMAZON_EN_LIMITS.SEARCH_TERMS_MAX_BYTES,
+  aPlusMaxChars: AMAZON_EN_LIMITS.APLUS_MAX_CHARS,
+  bulletFieldLabel: 'Bullet Points',
+  descriptionFieldLabel: 'Description',
+  searchTermsFieldLabel: 'Search Terms',
+};
