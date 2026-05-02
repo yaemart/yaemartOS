@@ -17,6 +17,7 @@ export default tseslint.config(
       'build/**',
       '**/*.tsbuildinfo',
       'apps/api/generated/**',
+      'apps/api/src/generated/**',
       'storybook-static/**',
     ],
   },
