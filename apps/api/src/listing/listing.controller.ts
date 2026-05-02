@@ -115,7 +115,7 @@ export class ListingController {
 
     const input: GenerateListingInput = {
       brandId: listing.brandId as any,
-      platform: 'amazon',
+      platform: listing.platform.code as any,
       productTitle: body.productTitle,
       productCategory: body.productCategory,
       targetLocale: listing.language as any,

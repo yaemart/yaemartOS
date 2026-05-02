@@ -79,6 +79,7 @@ export class ListingService {
       where: { id },
       include: {
         product: true,
+        platform: { select: { code: true } },
         versions: { orderBy: { versionNumber: 'desc' } },
       },
     });
