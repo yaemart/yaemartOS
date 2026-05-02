@@ -22,7 +22,12 @@ export { ListingsOperations } from './operations/listings';
 export { InventoryOperations } from './operations/inventory';
 export { ShopsOperations } from './operations/shops';
 
-export type { LingxingListingRaw, MappedListing } from './types/listing.types';
+export type {
+  LingxingListingRaw,
+  LingxingWalmartListingRaw,
+  ListingFetchResult,
+  MappedListing,
+} from './types/listing.types';
 export type { LingxingInventoryRaw, MappedInventory } from './types/inventory.types';
 export type { LingxingShopRaw, MappedShop } from './types/shop.types';
 

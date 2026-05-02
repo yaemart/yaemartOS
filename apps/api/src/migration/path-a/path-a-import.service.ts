@@ -5,9 +5,14 @@ import { PrismaClientManager } from '../../database/prisma.service';
 import { pickLatestBySku } from './conflict-rules';
 import { mapLingxingPathAExtraction } from './mapping';
 import { normalizePathARecord } from './normalize';
-import type { PathAExtractionInput, PathAExtractionResult, PathANormalizedRecord } from './types';
+import type {
+  PathAExtractionInput,
+  PathAExtractionResult,
+  PathANormalizeContext,
+  PathANormalizedRecord,
+} from './types';
 
-type ImportSummary = {
+export type ImportSummary = {
   runId: string;
   total: number;
   deduplicated: number;
@@ -29,7 +34,10 @@ export class PathAImportService {
     return this.prismaManager.getPublicClient();
   }
 
-  async importFromExtractionInputs(inputs: PathAExtractionInput[]): Promise<ImportSummary> {
+  async importFromExtractionInputs(
+    inputs: PathAExtractionInput[],
+    ctx?: PathANormalizeContext,
+  ): Promise<ImportSummary> {
     if (inputs.length === 0) {
       return {
         runId: 'empty-run',
@@ -42,10 +50,13 @@ export class PathAImportService {
     }
 
     const mappedRecords = inputs.map((input) => mapLingxingPathAExtraction(input));
-    return this.importMappedRecords(mappedRecords);
+    return this.importMappedRecords(mappedRecords, ctx);
   }
 
-  async importMappedRecords(records: PathAExtractionResult[]): Promise<ImportSummary> {
+  async importMappedRecords(
+    records: PathAExtractionResult[],
+    ctx?: PathANormalizeContext,
+  ): Promise<ImportSummary> {
     if (records.length === 0) {
       return {
         runId: 'empty-run',
@@ -59,6 +70,12 @@ export class PathAImportService {
 
     const runId = records[0].runId;
     const deduplicated = pickLatestBySku(records);
+    const resolvedCtx: PathANormalizeContext = ctx ?? {
+      brandId: 'homtone',
+      marketCode: 'US',
+      platformCode: 'amazon',
+    };
+
     const summary: ImportSummary = {
       runId,
       total: records.length,
@@ -70,7 +87,7 @@ export class PathAImportService {
 
     for (const record of deduplicated) {
       try {
-        const normalized = normalizePathARecord(record);
+        const normalized = normalizePathARecord(record, resolvedCtx);
         await this.upsertNormalizedRecord(normalized);
         summary.imported += 1;
       } catch (error) {
@@ -300,7 +317,7 @@ export class PathAImportService {
         brandId,
         marketId,
         platformId,
-        name: 'Homtone US Amazon (Path A)',
+        name: `${brandId} Path A auto-shop`,
         externalId: `path-a-${brandId}-${marketId}-${platformId}`,
       },
       select: { id: true },

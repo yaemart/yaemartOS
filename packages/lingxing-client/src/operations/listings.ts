@@ -3,7 +3,12 @@ import { HttpTransport } from '../client/http-transport';
 import { RateLimiter } from '../decorators/rate-limiter';
 import { withRetry } from '../decorators/retry';
 import { withCache } from '../decorators/cached';
-import { LingxingListingRaw, MappedListing } from '../types/listing.types';
+import {
+  LingxingListingRaw,
+  LingxingWalmartListingRaw,
+  ListingFetchResult,
+  MappedListing,
+} from '../types/listing.types';
 
 const LISTING_STATUS_MAP: Record<string, string> = {
   Active: 'active',
@@ -45,6 +50,62 @@ export class ListingsOperations {
       },
       { ttlSeconds: ttl, keyPrefix: this.cachePrefix },
     );
+  }
+
+  async getListingsForShop(
+    shopId: string,
+    options?: { page?: number; pageSize?: number },
+  ): Promise<ListingFetchResult<LingxingListingRaw>> {
+    const page = options?.page ?? 1;
+    const pageSize = options?.pageSize ?? 100;
+
+    return withRetry(async () => {
+      await this.rateLimiter.acquire();
+      const response = await this.transport.request<{
+        code: number;
+        data: LingxingListingRaw[];
+        total?: number;
+      }>('GET', '/erp/sc/mws/listing', { shop_id: shopId, page, page_size: pageSize });
+
+      const records = response.data ?? [];
+      const total = response.total ?? records.length;
+
+      return {
+        records,
+        total,
+        page,
+        pageSize,
+        hasMore: page * pageSize < total,
+      };
+    });
+  }
+
+  async getWalmartListingsForShop(
+    shopId: string,
+    options?: { page?: number; pageSize?: number },
+  ): Promise<ListingFetchResult<LingxingWalmartListingRaw>> {
+    const page = options?.page ?? 1;
+    const pageSize = options?.pageSize ?? 100;
+
+    return withRetry(async () => {
+      await this.rateLimiter.acquire();
+      const response = await this.transport.request<{
+        code: number;
+        data: LingxingWalmartListingRaw[];
+        total?: number;
+      }>('GET', '/erp/sc/walmart/listing', { shop_id: shopId, page, page_size: pageSize });
+
+      const records = response.data ?? [];
+      const total = response.total ?? records.length;
+
+      return {
+        records,
+        total,
+        page,
+        pageSize,
+        hasMore: page * pageSize < total,
+      };
+    });
   }
 
   private mapListing(raw: LingxingListingRaw): MappedListing {
