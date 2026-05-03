@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate:all-tenants": "node ./scripts/migrate-all-schemas.js",
-    "check:env:s2": "tsx scripts/ops/check-s2-env.ts"
+    "check:env:s2": "tsx scripts/ops/check-s2-env.ts",
+    "migrate:tenant": "tsx ../../scripts/migrate-tenant-schemas.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
