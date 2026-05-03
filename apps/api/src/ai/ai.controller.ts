@@ -4,6 +4,7 @@ import type { IListingGenerationService } from './interfaces/listing-generation.
 import type { IMcpToolCallService } from './interfaces/mcp-tool-call.interface';
 import { LISTING_GENERATION_SERVICE, MCP_TOOL_CALL_SERVICE } from './tokens';
 import { LINGXING_TOOL_DESCRIPTORS } from './tools/lingxing-tools';
+import { YAEMARTOS_TOOL_DESCRIPTORS } from './tools/yaemartos-tools';
 
 @Controller('ai')
 export class AiController {
@@ -25,10 +26,25 @@ export class AiController {
    * Agents SHOULD call this endpoint to discover available tools, their
    * descriptions, and parameter schemas before constructing tool calls.
    */
+  /**
+   * Returns the full structured descriptor for every MCP-compatible tool:
+   * - Lingxing ERP tools (inventoryQuery, listingSummary, keywordSuggestions)
+   * - yaemartOS platform tools (listing CRUD/generation, admin ticket management)
+   *
+   * Agents SHOULD call this endpoint to discover available tools, their
+   * descriptions, and parameter schemas before constructing calls.
+   */
   @Get('mcp/tools')
   @UseGuards(JwtAuthGuard)
   listMcpTools() {
-    return { tools: LINGXING_TOOL_DESCRIPTORS };
+    return {
+      tools: [...LINGXING_TOOL_DESCRIPTORS, ...YAEMARTOS_TOOL_DESCRIPTORS],
+      count: LINGXING_TOOL_DESCRIPTORS.length + YAEMARTOS_TOOL_DESCRIPTORS.length,
+      categories: {
+        lingxing: LINGXING_TOOL_DESCRIPTORS.map((t) => t.name),
+        platform: YAEMARTOS_TOOL_DESCRIPTORS.map((t) => t.name),
+      },
+    };
   }
 
   @Post('mcp/query-inventory')

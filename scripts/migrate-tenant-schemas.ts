@@ -90,16 +90,112 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
     )
   `);
 
+  // Atomic sequence for ticket numbers — prevents TOCTOU races under concurrency
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS ${s}.ticket_seq START WITH 1`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.ticket (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      session_id TEXT,
       ticket_no TEXT NOT NULL,
       subject TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      tags TEXT[] NOT NULL DEFAULT '{}',
+      assignee_id TEXT,
+      sla_hours INT NOT NULL DEFAULT 24,
+      sla_due_at TIMESTAMP(3),
+      closed_at TIMESTAMP(3),
       created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(ticket_no)
     )
+  `);
+
+  // Idempotent column additions for existing ticket tables (re-run safe)
+  await pool.query(`ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS session_id TEXT`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`,
+  );
+  await pool.query(`ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS assignee_id TEXT`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS sla_hours INT NOT NULL DEFAULT 24`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP(3)`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP(3)`,
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.ticket_message (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      ticket_id TEXT NOT NULL REFERENCES ${s}.ticket(id) ON DELETE CASCADE,
+      sender_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.chat_session (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      customer_id TEXT REFERENCES ${s}.customer(id) ON DELETE SET NULL,
+      session_token TEXT NOT NULL UNIQUE,
+      brand_id TEXT NOT NULL,
+      last_activity_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.chat_message (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      session_id TEXT NOT NULL REFERENCES ${s}.chat_session(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Trigger to auto-update ticket.updated_at on every row update.
+  // PostgreSQL does not auto-refresh CURRENT_TIMESTAMP columns like MySQL does.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION ${s}.set_updated_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_ticket_updated_at ON ${s}.ticket;
+    CREATE TRIGGER trg_ticket_updated_at
+    BEFORE UPDATE ON ${s}.ticket
+    FOR EACH ROW EXECUTE FUNCTION ${s}.set_updated_at();
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ticket_customer ON ${s}.ticket(customer_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ticket_session ON ${s}.ticket(session_id) WHERE session_id IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ticket_message_ticket ON ${s}.ticket_message(ticket_id, created_at);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_chat_message_session ON ${s}.chat_message(session_id, created_at);
   `);
 }
 
@@ -107,7 +203,7 @@ async function run(): Promise<void> {
   const connectionString = requireDirectUrl();
   const pool = new Pool({ connectionString });
 
-  console.info('Starting tenant schema migrations (U1: Customer auth schema)');
+  console.info('Starting tenant schema migrations (U1+: Customer auth + Chat/Ticket schema)');
   console.info(`Target schemas: ${TENANT_SCHEMAS.join(', ')}`);
 
   const succeeded: string[] = [];

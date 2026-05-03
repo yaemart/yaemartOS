@@ -4,6 +4,8 @@ import {
   Delete,
   Get,
   Inject,
+  Logger,
+  Optional,
   Param,
   Patch,
   Post,
@@ -18,6 +20,7 @@ import { CasbinGuard } from '../iam/casbin.guard';
 import { RequirePolicy } from '../iam/require-policy.decorator';
 import { FAQ_GENERATION_SERVICE } from '../ai/tokens';
 import type { FaqGenerationService } from '../ai/providers/faq-generation.service';
+import { FaqKnowledgeService } from '../search/faq-knowledge.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -26,9 +29,12 @@ import { ProductService } from './product.service';
 @Controller('products')
 @UseGuards(JwtAuthGuard, CasbinGuard)
 export class ProductController {
+  private readonly logger = new Logger(ProductController.name);
+
   constructor(
     private readonly productService: ProductService,
     @Inject(FAQ_GENERATION_SERVICE) private readonly faqService: FaqGenerationService,
+    @Optional() private readonly faqKnowledge?: FaqKnowledgeService,
   ) {}
 
   @Get()
@@ -82,7 +88,35 @@ export class ProductController {
   @Post(':id/faq')
   @RequirePolicy({ obj: 'products', act: 'write', field: '*' })
   async generateFaq(@Param('id') id: string, @Query('locale') locale: string = 'en') {
-    return this.faqService.generateFaq(id, locale);
+    const payload = await this.faqService.generateFaq(id, locale);
+
+    // Sync generated FAQs into the OpenSearch kNN index so the customer chat
+    // RAG layer can retrieve them immediately (fire-and-forget, non-blocking).
+    if (this.faqKnowledge && payload.brandId && payload.faqs.length > 0) {
+      void (async () => {
+        try {
+          await this.faqKnowledge!.ensureIndex(payload.brandId);
+          for (let i = 0; i < payload.faqs.length; i++) {
+            const faq = payload.faqs[i];
+            await this.faqKnowledge!.index({
+              faqId: `${payload.productId}:${locale}:${i}`,
+              brandId: payload.brandId,
+              locale,
+              productId: payload.productId,
+              question: faq.question,
+              answer: faq.answer,
+            });
+          }
+          this.logger.log(
+            `Indexed ${payload.faqs.length} FAQs for product=${payload.productId} locale=${locale}`,
+          );
+        } catch (err: unknown) {
+          this.logger.warn(`FAQ ES index failed for product=${payload.productId}: ${String(err)}`);
+        }
+      })();
+    }
+
+    return payload;
   }
 
   @Delete(':id')

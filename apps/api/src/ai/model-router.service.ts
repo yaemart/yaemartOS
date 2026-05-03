@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClientManager } from '../database/prisma.service';
 
-export type AiTaskType = 'listing' | 'faq' | 'recipe' | 'extraction';
+export type AiTaskType = 'listing' | 'faq' | 'recipe' | 'extraction' | 'chat';
 export type AiProviderType = 'gemini' | 'glm';
 
 /**
@@ -80,6 +80,7 @@ export class ModelRouterService {
         return 'glm';
       case 'listing':
       case 'extraction':
+      case 'chat':
         return 'gemini';
       default: {
         const _exhaustive: never = taskType;
