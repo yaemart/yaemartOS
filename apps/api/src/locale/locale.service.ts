@@ -1,10 +1,14 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { LocaleCode } from '../generated/prisma';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaClientManager } from '../database/prisma.service';
 
 @Injectable()
 export class LocaleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prismaManager: PrismaClientManager) {}
+
+  private get prisma() {
+    return this.prismaManager.getPublicClient();
+  }
 
   async findByMarket(marketId: string) {
     return this.prisma.locale.findMany({

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { LocaleCode } from '../generated/prisma';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaClientManager } from '../database/prisma.service';
 import { CreateTerminologyDto } from './dto/create-terminology.dto';
 import { UpdateTerminologyDto } from './dto/update-terminology.dto';
 
@@ -16,7 +16,11 @@ export interface CsvImportResult {
 
 @Injectable()
 export class TerminologyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prismaManager: PrismaClientManager) {}
+
+  private get prisma() {
+    return this.prismaManager.getPublicClient();
+  }
 
   async findByBrandAndLocale(brandId: string, locale: LocaleCode) {
     return this.prisma.terminologyEntry.findMany({
