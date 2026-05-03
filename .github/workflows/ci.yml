@@ -252,6 +252,38 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
 
+      # Pre-build both servers so Playwright webServer uses fast production binaries
+      # instead of slow TypeScript dev-mode compilation (avoids 180-second timeout).
+      - name: Build API (E2E)
+        working-directory: apps/api
+        run: pnpm exec nest build
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret
+          JWT_EXPIRES_IN: 15m
+          GEMINI_API_KEY: mock-key-for-ci
+          GEMINI_EMBED_MODEL: text-embedding-004
+          LINGXING_APP_ID: mock-app-id
+          LINGXING_APP_SECRET: mock-app-secret
+          GOOGLE_CLIENT_ID: dummy
+          GOOGLE_CLIENT_SECRET: dummy
+          GOOGLE_CALLBACK_URL: http://localhost:4000/auth/oauth/google/callback
+          FACEBOOK_CLIENT_ID: dummy
+          FACEBOOK_CLIENT_SECRET: dummy
+          FACEBOOK_CALLBACK_URL: http://localhost:4000/auth/oauth/facebook/callback
+
+      - name: Build Web (E2E)
+        run: pnpm --filter @yaemartos/web build
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+          NEXTAUTH_URL: http://127.0.0.1:3000
+          NEXTAUTH_SECRET: ci-e2e-nextauth-secret
+          NEXT_PUBLIC_FEATURE_LISTING_AI: 'false'
+          NEXT_PUBLIC_FEATURE_BATCH_LISTING_GENERATE: 'false'
+          NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION: 'false'
+
       - name: Run E2E smoke tests
         run: pnpm exec playwright test tests/e2e/
         env:
@@ -259,13 +291,18 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_test
           REDIS_URL: redis://localhost:6379
           PORT: 4000
-          NODE_ENV: test
+          NODE_ENV: production
           GEMINI_API_KEY: mock-key-for-ci
+          GEMINI_EMBED_MODEL: text-embedding-004
           CLOUDINARY_CLOUD_NAME: mock
           CLOUDINARY_API_KEY: mock
           CLOUDINARY_API_SECRET: mock
           JWT_SECRET: ci-test-secret
           JWT_EXPIRES_IN: 15m
+          LINGXING_APP_ID: mock-app-id
+          LINGXING_APP_SECRET: mock-app-secret
+          NEXTAUTH_SECRET: ci-e2e-nextauth-secret
+          NEXTAUTH_URL: http://127.0.0.1:3000
           GOOGLE_CLIENT_ID: dummy
           GOOGLE_CLIENT_SECRET: dummy
           GOOGLE_CALLBACK_URL: http://localhost:4000/auth/oauth/google/callback
