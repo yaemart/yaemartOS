@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ListingVersionStatus, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
+import { ListingDraftIndexerService } from '../search/listing-draft-indexer.service';
 import type { ListingContent } from '@yaemartos/shared-types';
 
 type Actor = {
@@ -11,9 +18,12 @@ type Actor = {
 
 @Injectable()
 export class ListingVersionService {
+  private readonly logger = new Logger(ListingVersionService.name);
+
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly auditService: AuditService,
+    @Optional() private readonly draftIndexer?: ListingDraftIndexerService,
   ) {}
 
   private get prisma() {
@@ -81,6 +91,13 @@ export class ListingVersionService {
       metadata: { listingId, versionNumber: version.versionNumber, status: version.status },
     });
 
+    // Fire-and-forget: keep ES index in sync with the DB version
+    void this.draftIndexer
+      ?.indexVersion(version.id)
+      .catch((err: unknown) =>
+        this.logger.warn(`Draft index failed for version ${version.id}: ${String(err)}`),
+      );
+
     return version;
   }
 
@@ -124,6 +141,15 @@ export class ListingVersionService {
       entityId: activated.id,
       metadata: { listingId, versionNumber, previousStatus: target.status },
     });
+
+    // Re-index on activate so status change is reflected in ES
+    void this.draftIndexer
+      ?.indexVersion(activated.id)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Draft index failed on activate for version ${activated.id}: ${String(err)}`,
+        ),
+      );
 
     return activated;
   }

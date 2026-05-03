@@ -114,6 +114,37 @@ export class TicketService {
     return ticket;
   }
 
+  async findOne(ticketId: string, customerId: string) {
+    const ticket = await this.tenantDb.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        ticketNo: true,
+        subject: true,
+        status: true,
+        priority: true,
+        tags: true,
+        sessionId: true,
+        assigneeId: true,
+        slaHours: true,
+        slaDueAt: true,
+        createdAt: true,
+        updatedAt: true,
+        closedAt: true,
+        customerId: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket ${ticketId} not found`);
+    }
+    if (ticket.customerId !== customerId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return ticket;
+  }
+
   async findByCustomer(customerId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([

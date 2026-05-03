@@ -18,7 +18,10 @@ import { FaqKnowledgeService } from '../../search/faq-knowledge.service';
 import { AI_DEGRADED_SIGNAL } from '../../ai/interceptors/ai-fallback.interceptor';
 
 const MAX_CONTEXT_MESSAGES = 10;
-const MAX_UNFULFILLED_TURNS = 3;
+/** Default escalation threshold — overridden by env CHAT_MAX_UNFULFILLED_TURNS */
+const DEFAULT_MAX_UNFULFILLED_TURNS = 3;
+/** Minimum response length below which the answer is treated as unfulfilled — overridden by env CHAT_MIN_RESPONSE_LENGTH */
+const DEFAULT_MIN_RESPONSE_LENGTH = 10;
 const MAX_AI_RETRIES = 2;
 const AI_RETRY_BASE_MS = 500;
 /** Sessions with no activity for this duration are evicted from the in-memory maps. */
@@ -189,13 +192,16 @@ export class ChatService implements OnModuleDestroy {
     const faqChunks = await this.faqKnowledge.search(content, brandId, locale, 5);
     const faqContext = faqChunks.map((c) => `Q: ${c.question}\nA: ${c.answer}`).join('\n\n');
 
+    const brandDisplayName = brandId.charAt(0).toUpperCase() + brandId.slice(1);
     const systemPrompt = [
-      `You are a helpful customer support assistant for brand ${brandId}.`,
-      `Respond in locale: ${locale}.`,
+      `You are a helpful customer support assistant for ${brandDisplayName}, a cross-border e-commerce brand.`,
+      `Always respond in the language matching locale: ${locale}.`,
+      `Your support scope: product questions, order status inquiries, warranty and returns, and general brand FAQs.`,
+      `Out of scope (do not attempt): pricing negotiations, account modifications, legal disputes — for these, let the customer know you will connect them with a human agent.`,
       faqContext
-        ? `Relevant FAQ knowledge:\n${faqContext}`
-        : 'No FAQ knowledge available for this query.',
-      'If you cannot answer or the question is outside your knowledge, respond with exactly: UNKNOWN',
+        ? `Relevant knowledge base entries:\n${faqContext}`
+        : 'No matching knowledge base entries found for this query.',
+      'If you genuinely cannot answer the question within the scope above, respond with exactly: UNKNOWN',
     ].join('\n\n');
 
     const subject = this.getSessionStream(brandId, sessionId);
@@ -218,9 +224,11 @@ export class ChatService implements OnModuleDestroy {
           throw new ServiceUnavailableException('GEMINI_API_KEY not configured');
         }
 
+        const chatModel =
+          this.config.get<string>('CHAT_AI_MODEL') ?? 'gemini-2.5-flash-preview-04-17';
         const google = createGoogleGenerativeAI({ apiKey });
         const { textStream } = await streamText({
-          model: google('gemini-2.5-flash-preview-04-17'),
+          model: google(chatModel),
           system: systemPrompt,
           messages: contextMessages
             .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -265,14 +273,23 @@ export class ChatService implements OnModuleDestroy {
       data: { sessionId, role: 'assistant', content: responseContent },
     });
 
+    const maxUnfulfilledTurns = this.config.get<number>(
+      'CHAT_MAX_UNFULFILLED_TURNS',
+      DEFAULT_MAX_UNFULFILLED_TURNS,
+    );
+    const minResponseLength = this.config.get<number>(
+      'CHAT_MIN_RESPONSE_LENGTH',
+      DEFAULT_MIN_RESPONSE_LENGTH,
+    );
+
     const trimmed = responseContent.trim();
-    const isUnfulfilled = trimmed.toUpperCase() === 'UNKNOWN' || trimmed.length < 10;
+    const isUnfulfilled = trimmed.toUpperCase() === 'UNKNOWN' || trimmed.length < minResponseLength;
 
     if (isUnfulfilled) {
       const count = (this.unfulfilledCounts.get(sessionId) ?? 0) + 1;
       this.unfulfilledCounts.set(sessionId, count);
 
-      if (count >= MAX_UNFULFILLED_TURNS) {
+      if (count >= maxUnfulfilledTurns) {
         this.logger.log(`Session ${sessionId}: ${count} unfulfilled turns — escalating`);
         this.unfulfilledCounts.delete(sessionId);
         await onEscalate(contextMessages);

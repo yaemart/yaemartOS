@@ -19,9 +19,27 @@ interface ChatWindowProps {
   locale: string;
   accessToken?: string;
   brand?: string;
+  /** Brand display name shown in the welcome message. Defaults to the brand slug capitalized. */
+  brandDisplayName?: string;
+  /** Suggested prompt chips shown before the first message. */
+  suggestedPrompts?: string[];
 }
 
-export function ChatWindow({ locale, accessToken, brand }: ChatWindowProps) {
+const DEFAULT_SUGGESTED_PROMPTS = [
+  'Where is my order?',
+  'How do I register my warranty?',
+  'What is your return policy?',
+];
+
+export function ChatWindow({
+  locale,
+  accessToken,
+  brand,
+  brandDisplayName,
+  suggestedPrompts = DEFAULT_SUGGESTED_PROMPTS,
+}: ChatWindowProps) {
+  const displayName =
+    brandDisplayName ?? (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : 'Support');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -135,9 +153,35 @@ export function ChatWindow({ locale, accessToken, brand }: ChatWindowProps) {
     >
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
-          <p className="text-center text-sm mt-8" style={{ color: 'var(--color-muted, #9ca3af)' }}>
-            How can I help you today?
-          </p>
+          <div className="flex flex-col items-center gap-4 mt-8">
+            <div className="text-center">
+              <p className="font-medium text-sm" style={{ color: 'var(--color-text, #111827)' }}>
+                Hi! I&apos;m the {displayName} support assistant.
+              </p>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-muted, #9ca3af)' }}>
+                I can help with orders, products, warranty, and returns.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 w-full">
+              {suggestedPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => {
+                    setInput(prompt);
+                  }}
+                  className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:opacity-80 disabled:opacity-50"
+                  style={{
+                    borderColor: 'var(--color-primary, #3b82f6)',
+                    color: 'var(--color-primary, #3b82f6)',
+                    backgroundColor: 'transparent',
+                  }}
+                  disabled={isStreaming || isEscalated || !sessionId}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />

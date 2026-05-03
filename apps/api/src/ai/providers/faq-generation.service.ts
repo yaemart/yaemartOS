@@ -14,6 +14,10 @@ type FaqPayload = {
   faqs: FaqItem[];
   generatedAt: string;
   model: string;
+  /** Brand slug of the product (needed for downstream ES indexing). */
+  brandId: string;
+  /** Product ID (needed for downstream ES indexing). */
+  productId: string;
 };
 
 const FAQ_SYSTEM_PROMPT = `You are an expert e-commerce product FAQ writer.
@@ -112,6 +116,8 @@ export class FaqGenerationService {
       faqs,
       generatedAt: new Date().toISOString(),
       model: glmModel,
+      brandId: product.brand?.slug ?? '',
+      productId,
     };
 
     const localeCode = (

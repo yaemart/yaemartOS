@@ -222,6 +222,12 @@ export interface TicketListResult {
   limit: number;
 }
 
+export function getTicket(ticketId: string, accessToken?: string): Promise<Ticket> {
+  return request<Ticket>(`/customer/tickets/${ticketId}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+}
+
 export function getTickets(page = 1, accessToken?: string): Promise<TicketListResult> {
   return request<TicketListResult>(`/customer/tickets?page=${page}`, {
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},

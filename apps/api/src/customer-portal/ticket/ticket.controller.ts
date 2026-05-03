@@ -80,6 +80,14 @@ export class TicketController {
     });
   }
 
+  /** Customer: get a single ticket (requires login). */
+  @Get(':ticketId')
+  @UseGuards(CustomerGuard)
+  async findOne(@Param('ticketId') ticketId: string) {
+    const customerId = this.cls.get<string>('customerId');
+    return this.ticketService.findOne(ticketId, customerId);
+  }
+
   /** Customer: list own tickets (requires login). */
   @Get()
   @UseGuards(CustomerGuard)

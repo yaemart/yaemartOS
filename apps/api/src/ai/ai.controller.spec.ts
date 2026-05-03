@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AiController } from './ai.controller';
 import { LINGXING_TOOL_DESCRIPTORS } from './tools/lingxing-tools';
+import { YAEMARTOS_TOOL_DESCRIPTORS } from './tools/yaemartos-tools';
 
 function createController() {
   const listingGeneration = {
@@ -19,16 +20,21 @@ function createController() {
 
 describe('AiController', () => {
   describe('GET /ai/mcp/tools', () => {
-    it('returns the structured LINGXING_TOOL_DESCRIPTORS array', () => {
+    it('returns merged Lingxing + yaemartOS tool descriptors', () => {
       const { controller } = createController();
       const result = controller.listMcpTools();
-      expect(result.tools).toStrictEqual(LINGXING_TOOL_DESCRIPTORS);
+      const expected = [...LINGXING_TOOL_DESCRIPTORS, ...YAEMARTOS_TOOL_DESCRIPTORS];
+      expect(result.tools).toStrictEqual(expected);
     });
 
-    it('returns 3 tool descriptors', () => {
+    it('returns the correct total count and categories', () => {
       const { controller } = createController();
-      const { tools } = controller.listMcpTools();
-      expect(tools).toHaveLength(3);
+      const result = controller.listMcpTools();
+      expect(result.count).toBe(
+        LINGXING_TOOL_DESCRIPTORS.length + YAEMARTOS_TOOL_DESCRIPTORS.length,
+      );
+      expect(result.categories.lingxing).toHaveLength(LINGXING_TOOL_DESCRIPTORS.length);
+      expect(result.categories.platform).toHaveLength(YAEMARTOS_TOOL_DESCRIPTORS.length);
     });
 
     it('each descriptor has name, description, and parameters fields', () => {
