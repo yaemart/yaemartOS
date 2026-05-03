@@ -131,6 +131,14 @@ const markets = [
     timezone: 'America/New_York',
   },
   {
+    id: 'mkt_spoon_ca',
+    brandId: 'spoonlemon',
+    code: 'CA',
+    name: '加拿大',
+    currency: 'CAD',
+    timezone: 'America/Toronto',
+  },
+  {
     id: 'mkt_spoon_de',
     brandId: 'spoonlemon',
     code: 'DE',
@@ -403,6 +411,33 @@ async function main() {
   }
   console.log(`✓ ${markets.length} markets`);
 
+  // Locales — North America EN/ES/FR for Homtone + Spoonlemon (S3 首发品牌)
+  // Each entry: { marketId, language, isPrimary }
+  const locales = [
+    // Homtone US
+    { marketId: 'mkt_homtone_us', language: 'en' as const, isPrimary: true },
+    { marketId: 'mkt_homtone_us', language: 'es' as const, isPrimary: false },
+    { marketId: 'mkt_homtone_us', language: 'fr' as const, isPrimary: false },
+    // Homtone CA
+    { marketId: 'mkt_homtone_ca', language: 'en' as const, isPrimary: true },
+    { marketId: 'mkt_homtone_ca', language: 'fr' as const, isPrimary: false },
+    // Spoonlemon US
+    { marketId: 'mkt_spoon_us', language: 'en' as const, isPrimary: true },
+    { marketId: 'mkt_spoon_us', language: 'es' as const, isPrimary: false },
+    { marketId: 'mkt_spoon_us', language: 'fr' as const, isPrimary: false },
+    // Spoonlemon CA
+    { marketId: 'mkt_spoon_ca', language: 'en' as const, isPrimary: true },
+    { marketId: 'mkt_spoon_ca', language: 'fr' as const, isPrimary: false },
+  ];
+  for (const loc of locales) {
+    await prisma.locale.upsert({
+      where: { marketId_language: { marketId: loc.marketId, language: loc.language } },
+      create: { marketId: loc.marketId, language: loc.language, isPrimary: loc.isPrimary },
+      update: { isPrimary: loc.isPrimary },
+    });
+  }
+  console.log(`✓ ${locales.length} locales`);
+
   // Shops (placeholder externalIds — update via /shops UI after binding to Lingxing)
   for (const s of shops) {
     await prisma.shop.upsert({
@@ -441,6 +476,11 @@ async function main() {
         label: '批量多平台 Listing 生成',
       },
       { key: 'feature_flag.LISTING_MATRIX', value: 'true', label: '矩阵分析 Dashboard' },
+      {
+        key: 'feature_flag.MULTILINGUAL_LISTING_GENERATION',
+        value: 'true',
+        label: '多语言 Listing 批量生成（EN/ES/FR）',
+      },
     ];
     for (const flag of devFlags) {
       await prisma.systemConfig.upsert({

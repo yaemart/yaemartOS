@@ -3,22 +3,31 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, ChevronDown, Save } from 'lucide-react';
-import type { ListingItem, ListingVersionItem } from '@/lib/api/listing-client';
-import { generateListingDraft } from '@/lib/api/listing-client';
+import { ArrowLeft, ChevronDown, Languages, Save } from 'lucide-react';
+import type { ListingItem, ListingVersionItem, LocaleInfo } from '@/lib/api/listing-client';
+import { batchGenerateMultilingual, generateListingDraft } from '@/lib/api/listing-client';
 import type { ListingVersion } from '@/lib/mock-data';
+import { LocaleSwitcher } from './locale-switcher';
 import { VersionTimeline } from './version-timeline';
 import { ContentEditor } from './content-editor';
 import { AiCopilotPanel } from './ai-copilot-panel';
 import { GeneratingOverlay } from './generating-overlay';
 
 const AI_FEATURE_ENABLED = process.env.NEXT_PUBLIC_FEATURE_LISTING_AI === 'true';
+const MULTILINGUAL_ENABLED =
+  process.env.NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION === 'true';
+
+type SiblingListing = { id: string; language: string };
 
 type Props = {
   listing: ListingItem & { versions: ListingVersionItem[] };
   locale: string;
   accessToken: string;
   brandId: string;
+  /** Active locales for the listing's market (from GET /locales) */
+  marketLocales?: LocaleInfo[];
+  /** Sibling listings for the same product/shop/platform in other languages */
+  siblingListings?: SiblingListing[];
 };
 
 /**
@@ -45,7 +54,14 @@ function toUiVersion(v: ListingVersionItem, listingTitle?: string | null): Listi
   };
 }
 
-export function ListingEditorShell({ listing, locale, accessToken, brandId }: Props) {
+export function ListingEditorShell({
+  listing,
+  locale,
+  accessToken,
+  brandId,
+  marketLocales = [],
+  siblingListings = [],
+}: Props) {
   const router = useRouter();
 
   const uiVersions = listing.versions.map((v) => toUiVersion(v, listing.title));
@@ -55,6 +71,14 @@ export function ListingEditorShell({ listing, locale, accessToken, brandId }: Pr
   const [selectedVersion, setSelectedVersion] = useState<ListingVersion | null>(initialSelected);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [isMultilingualGenerating, setIsMultilingualGenerating] = useState(false);
+
+  function handleLocaleSwitch(targetLocale: string) {
+    const sibling = siblingListings.find((s) => s.language === targetLocale);
+    if (sibling) {
+      router.push(`/${locale}/listings/${sibling.id}`);
+    }
+  }
 
   async function startGeneration() {
     if (!AI_FEATURE_ENABLED) {
@@ -95,6 +119,54 @@ export function ListingEditorShell({ listing, locale, accessToken, brandId }: Pr
     }
   }
 
+  async function startMultilingualGeneration() {
+    if (!MULTILINGUAL_ENABLED) {
+      alert(
+        '多语言生成功能暂未启用（NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION=true 开启）',
+      );
+      return;
+    }
+    const languages = marketLocales.map((l) => l.language);
+    if (languages.length === 0) {
+      alert('当前市场无可用语言配置');
+      return;
+    }
+    const product = listing.product as { title?: string; sku?: string } | undefined;
+    if (!listing.productId) {
+      alert('当前 Listing 未关联产品，无法批量生成');
+      return;
+    }
+
+    setIsMultilingualGenerating(true);
+    try {
+      await batchGenerateMultilingual(
+        accessToken,
+        {
+          productId: listing.productId,
+          brandId,
+          marketId: listing.marketId,
+          productTitle: product?.title ?? listing.platformListingId,
+          productCategory: listing.platformId,
+          languages,
+          targets: [
+            {
+              shopId: listing.shopId,
+              platformCode: listing.platformId,
+              platformListingId: listing.platformListingId,
+            },
+          ],
+        },
+        brandId,
+      );
+      router.refresh();
+    } catch (err) {
+      console.error('Multilingual generation failed:', err);
+      alert('多语言生成失败，请检查 API Key 配置');
+    } finally {
+      setIsMultilingualGenerating(false);
+    }
+  }
+
   function cancelGeneration() {
     setIsGenerating(false);
     setGenerationProgress(0);
@@ -102,6 +174,13 @@ export function ListingEditorShell({ listing, locale, accessToken, brandId }: Pr
 
   const productTitle =
     (listing.product as { title?: string } | undefined)?.title ?? `Listing ${listing.id}`;
+
+  // Build locale list with current listing's language as active.
+  // Merge market locales with sibling listings to show available languages.
+  const localesWithSiblings: LocaleInfo[] = marketLocales.filter(
+    (l) =>
+      l.language === listing.language || siblingListings.some((s) => s.language === l.language),
+  );
 
   return (
     <div className="flex h-screen flex-col">
@@ -119,12 +198,33 @@ export function ListingEditorShell({ listing, locale, accessToken, brandId }: Pr
           <h1 className="text-sm font-medium text-brand-text">{productTitle}</h1>
         </div>
 
-        <button className="inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-white shadow-xs hover:opacity-90 transition-opacity">
-          <Save className="h-3.5 w-3.5" />
-          保存
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
+        <div className="flex items-center gap-2">
+          {MULTILINGUAL_ENABLED && marketLocales.length > 1 && (
+            <button
+              onClick={startMultilingualGeneration}
+              disabled={isMultilingualGenerating || isGenerating}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-xs hover:bg-zinc-50 transition-colors disabled:opacity-50"
+            >
+              <Languages className="h-3.5 w-3.5" />
+              {isMultilingualGenerating ? '生成中…' : '批量多语言生成'}
+            </button>
+          )}
+          <button className="inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-white shadow-xs hover:opacity-90 transition-opacity">
+            <Save className="h-3.5 w-3.5" />
+            保存
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </button>
+        </div>
       </header>
+
+      {/* Language Switcher Tab Bar */}
+      {localesWithSiblings.length > 1 && (
+        <LocaleSwitcher
+          locales={localesWithSiblings}
+          activeLocale={listing.language}
+          onSwitch={handleLocaleSwitch}
+        />
+      )}
 
       {/* Three-column layout */}
       <div className="flex flex-1 overflow-hidden">

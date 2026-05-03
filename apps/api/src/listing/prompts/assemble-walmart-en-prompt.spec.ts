@@ -113,4 +113,39 @@ describe('assembleWalmartEnPrompt', () => {
       expect(prompt).toContain('no specific voice guide');
     });
   });
+
+  describe('Multi-locale direct writing strategy', () => {
+    it('ES prompt includes Spanish writing guidelines and direct-write directive', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ targetLocale: 'es' }));
+      expect(prompt).toContain('Do NOT translate from English');
+      expect(prompt).toContain('Write ALL content directly in Spanish');
+      expect(prompt).toContain('español');
+    });
+
+    it('FR prompt includes French writing guidelines and direct-write directive', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ targetLocale: 'fr' }));
+      expect(prompt).toContain('Do NOT translate from English');
+      expect(prompt).toContain('Write ALL content directly in French');
+      expect(prompt).toContain('français');
+    });
+
+    it('EN prompt does not include direct-write directive', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ targetLocale: 'en' }));
+      expect(prompt).not.toContain('Do NOT translate from English');
+    });
+  });
+
+  describe('Terminology injection', () => {
+    it('injects terminology entries for non-EN locale', () => {
+      const terminology = [{ term: 'SpoonEase', definition: 'our ergonomic grip technology' }];
+      const prompt = assembleWalmartEnPrompt(baseInput({ targetLocale: 'es' }), terminology);
+      expect(prompt).toContain('Brand Terminology');
+      expect(prompt).toContain('SpoonEase');
+    });
+
+    it('does not inject terminology block when empty', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput(), []);
+      expect(prompt).not.toContain('Brand Terminology');
+    });
+  });
 });

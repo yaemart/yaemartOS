@@ -17,6 +17,8 @@ import { SearchModule } from './search/search.module';
 import { ShopModule } from './shop/shop.module';
 import { MigrationModule } from './migration/migration.module';
 import { SettingsModule } from './settings/settings.module';
+import { LocaleModule } from './locale/locale.module';
+import { TerminologyModule } from './terminology/terminology.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { SettingsModule } from './settings/settings.module';
     ShopModule,
     MigrationModule,
     SettingsModule,
+    LocaleModule,
+    TerminologyModule,
   ],
   providers: [
     {

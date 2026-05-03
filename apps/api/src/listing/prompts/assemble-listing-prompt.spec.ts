@@ -137,4 +137,51 @@ describe('assembleAmazonEnPrompt', () => {
       expect(prompt).toContain('amazon');
     });
   });
+
+  describe('Multi-locale direct writing strategy', () => {
+    it('EN prompt contains English writing guidelines and no "Do NOT translate" directive', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput({ targetLocale: 'en' }));
+      expect(prompt).toContain('Lead the title with the brand name');
+      expect(prompt).not.toContain('Do NOT translate from English');
+    });
+
+    it('ES prompt contains Spanish writing guidelines and direct-write directive', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput({ targetLocale: 'es' }));
+      expect(prompt).toContain('Do NOT translate from English');
+      expect(prompt).toContain('Write ALL content directly in Spanish');
+      expect(prompt).toContain('español');
+    });
+
+    it('FR prompt contains French writing guidelines and direct-write directive', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput({ targetLocale: 'fr' }));
+      expect(prompt).toContain('Do NOT translate from English');
+      expect(prompt).toContain('Write ALL content directly in French');
+      expect(prompt).toContain('français');
+    });
+
+    it('unknown locale falls back to EN guidelines without throwing', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput({ targetLocale: 'zh' as any }));
+      expect(prompt).toContain('Lead the title with the brand name');
+    });
+  });
+
+  describe('Terminology injection', () => {
+    it('injects terminology entries into Brand Voice section', () => {
+      const terminology = [{ term: 'HomPure', definition: 'flagship purification line' }];
+      const prompt = assembleAmazonEnPrompt(baseInput(), terminology);
+      expect(prompt).toContain('Brand Terminology');
+      expect(prompt).toContain('HomPure');
+      expect(prompt).toContain('flagship purification line');
+    });
+
+    it('does not inject terminology block when array is empty', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput(), []);
+      expect(prompt).not.toContain('Brand Terminology');
+    });
+
+    it('does not inject terminology block when parameter is undefined', () => {
+      const prompt = assembleAmazonEnPrompt(baseInput());
+      expect(prompt).not.toContain('Brand Terminology');
+    });
+  });
 });

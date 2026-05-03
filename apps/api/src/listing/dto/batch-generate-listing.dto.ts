@@ -1,7 +1,7 @@
 import { IsArray, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
-const LOCALES = ['en', 'es', 'fr', 'de', 'it', 'ja'] as const;
+export const BATCH_LOCALES = ['en', 'es', 'fr', 'de', 'it', 'ja'] as const;
 
 export class BatchGenerateTargetDto {
   @IsString()
@@ -52,8 +52,23 @@ export class BatchGenerateListingDto {
   @IsString()
   productCategory!: string;
 
-  @IsIn(LOCALES)
-  language!: string;
+  /**
+   * Multi-language batch: provide an array of locale codes.
+   * Takes priority over the legacy `language` field.
+   * e.g. ['en', 'es', 'fr'] generates 3 × targets.length versions.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsIn(BATCH_LOCALES, { each: true })
+  languages?: string[];
+
+  /**
+   * @deprecated Use `languages` instead. Kept for backward-compatibility.
+   * If only `language` is provided, it is treated as `languages: [language]`.
+   */
+  @IsOptional()
+  @IsIn(BATCH_LOCALES)
+  language?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
