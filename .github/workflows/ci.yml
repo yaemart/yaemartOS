@@ -236,6 +236,7 @@ jobs:
         working-directory: apps/api
         run: pnpm exec prisma generate
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/yaemartos_ci_generate
 
       - name: Run Prisma migrations
@@ -273,6 +274,16 @@ jobs:
           FACEBOOK_CLIENT_ID: dummy
           FACEBOOK_CLIENT_SECRET: dummy
           FACEBOOK_CALLBACK_URL: http://localhost:4000/auth/oauth/facebook/callback
+
+      - name: Verify API build artifact
+        run: |
+          if [ ! -f apps/api/dist/main.js ]; then
+            echo "ERROR: apps/api/dist/main.js not found after nest build!"
+            echo "Contents of apps/api/dist/ (if it exists):"
+            ls -la apps/api/dist/ 2>/dev/null || echo "  (dist/ does not exist)"
+            exit 1
+          fi
+          echo "OK: apps/api/dist/main.js exists"
 
       - name: Build Web (E2E)
         run: pnpm --filter @yaemartos/web build
