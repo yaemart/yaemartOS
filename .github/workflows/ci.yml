@@ -25,13 +25,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'pnpm'
+          # cache disabled temporarily for diagnosis
 
       - name: Debug lockfile
         run: |
-          echo "=== pnpm-lock.yaml head ===" && head -5 pnpm-lock.yaml
-          echo "=== apps/portal importer ===" && grep -A 20 "^  apps/portal:" pnpm-lock.yaml || echo "NOT FOUND"
-          echo "=== portal package.json ===" && cat apps/portal/package.json
+          echo "--- pnpm version ---"
+          pnpm --version
+          echo "--- lockfileVersion ---"
+          head -1 pnpm-lock.yaml
+          echo "--- apps/portal importer ---"
+          grep -A 5 "^  apps/portal:" pnpm-lock.yaml || echo "PORTAL NOT FOUND IN LOCKFILE"
+          echo "--- portal package.json ---"
+          cat apps/portal/package.json || echo "PACKAGE.JSON NOT FOUND"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
