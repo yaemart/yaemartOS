@@ -89,18 +89,16 @@ export class FaqKnowledgeService {
       body: {
         size: k,
         query: {
-          bool: {
-            must: [{ term: { locale } }],
-            should: [
-              {
-                knn: {
-                  question_vector: {
-                    vector,
-                    k,
-                  },
+          knn: {
+            question_vector: {
+              vector,
+              k,
+              filter: {
+                bool: {
+                  must: [{ term: { locale } }, { term: { brand_id: brandId } }],
                 },
               },
-            ],
+            },
           },
         },
       },

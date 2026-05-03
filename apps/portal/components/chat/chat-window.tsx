@@ -18,11 +18,11 @@ export interface ChatMessage {
 interface ChatWindowProps {
   locale: string;
   accessToken?: string;
+  brand?: string;
 }
 
-export function ChatWindow({ locale, accessToken }: ChatWindowProps) {
+export function ChatWindow({ locale, accessToken, brand }: ChatWindowProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -36,7 +36,6 @@ export function ChatWindow({ locale, accessToken }: ChatWindowProps) {
     createOrResumeChatSession(storedToken, accessToken)
       .then(({ sessionId: id, sessionToken: token }) => {
         setSessionId(id);
-        setSessionToken(token);
         sessionStorage.setItem('chat_session_token', token);
       })
       .catch(() => setError('Unable to start chat. Please try again.'));
@@ -50,7 +49,7 @@ export function ChatWindow({ locale, accessToken }: ChatWindowProps) {
     if (esRef.current) {
       esRef.current.close();
     }
-    const url = `${chatStreamUrl(id)}?brand=${process.env.NEXT_PUBLIC_BRAND ?? 'homtone'}`;
+    const url = `${chatStreamUrl(id)}?brand=${brand ?? process.env.NEXT_PUBLIC_BRAND ?? 'homtone'}`;
     const es = new EventSource(url);
     esRef.current = es;
 
@@ -130,27 +129,47 @@ export function ChatWindow({ locale, accessToken }: ChatWindowProps) {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-2xl mx-auto">
+    <div
+      className="flex flex-col h-full max-w-2xl mx-auto"
+      data-brand={brand ?? process.env.NEXT_PUBLIC_BRAND}
+    >
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
-          <p className="text-center text-sm text-gray-400 mt-8">How can I help you today?</p>
+          <p className="text-center text-sm mt-8" style={{ color: 'var(--color-muted, #9ca3af)' }}>
+            How can I help you today?
+          </p>
         )}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
         {isEscalated && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          <div
+            className="rounded-lg p-3 text-sm border"
+            style={{
+              backgroundColor: 'var(--color-warning-bg, #fffbeb)',
+              borderColor: 'var(--color-warning-border, #fcd34d)',
+              color: 'var(--color-warning-text, #92400e)',
+            }}
+          >
             Your conversation has been escalated to our support team. A ticket has been created.
           </div>
         )}
-        {error && <p className="text-center text-sm text-red-500">{error}</p>}
+        {error && (
+          <p className="text-center text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>
+            {error}
+          </p>
+        )}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t p-4 bg-white">
+      <div className="border-t p-4" style={{ backgroundColor: 'var(--color-surface, #ffffff)' }}>
         <div className="flex gap-2">
           <textarea
-            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
+            style={{
+              borderColor: 'var(--color-border, #d1d5db)',
+              outlineColor: 'var(--color-primary, #3b82f6)',
+            }}
             rows={2}
             placeholder="Type a message…"
             value={input}
@@ -161,7 +180,11 @@ export function ChatWindow({ locale, accessToken }: ChatWindowProps) {
           <button
             onClick={() => void sendMessage()}
             disabled={!input.trim() || isStreaming || isEscalated || !sessionId}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--color-primary, #3b82f6)',
+              color: 'var(--color-primary-fg, #ffffff)',
+            }}
           >
             {isStreaming ? '…' : 'Send'}
           </button>

@@ -90,6 +90,9 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
     )
   `);
 
+  // Atomic sequence for ticket numbers — prevents TOCTOU races under concurrency
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS ${s}.ticket_seq START WITH 1`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.ticket (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -109,6 +112,25 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
       UNIQUE(ticket_no)
     )
   `);
+
+  // Idempotent column additions for existing ticket tables (re-run safe)
+  await pool.query(`ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS session_id TEXT`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`,
+  );
+  await pool.query(`ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS assignee_id TEXT`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS sla_hours INT NOT NULL DEFAULT 24`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP(3)`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.ticket ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP(3)`,
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.ticket_message (
@@ -141,8 +163,31 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
     )
   `);
 
+  // Trigger to auto-update ticket.updated_at on every row update.
+  // PostgreSQL does not auto-refresh CURRENT_TIMESTAMP columns like MySQL does.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION ${s}.set_updated_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_ticket_updated_at ON ${s}.ticket;
+    CREATE TRIGGER trg_ticket_updated_at
+    BEFORE UPDATE ON ${s}.ticket
+    FOR EACH ROW EXECUTE FUNCTION ${s}.set_updated_at();
+  `);
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_ticket_customer ON ${s}.ticket(customer_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ticket_session ON ${s}.ticket(session_id) WHERE session_id IS NOT NULL;
   `);
 
   await pool.query(`

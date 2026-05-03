@@ -6,11 +6,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PRISMA_TENANT_CLIENT } from '../../database/database.tokens';
+import { TenantPrismaClient } from '../../database/tenant-prisma.types';
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type SenderType = 'customer' | 'ai' | 'agent';
+
+const TICKET_STATUSES: ReadonlySet<TicketStatus> = new Set([
+  'open',
+  'in_progress',
+  'resolved',
+  'closed',
+]);
+
+function assertTicketStatus(value: unknown): TicketStatus {
+  if (typeof value === 'string' && TICKET_STATUSES.has(value as TicketStatus)) {
+    return value as TicketStatus;
+  }
+  throw new BadRequestException(`Invalid ticket status: ${String(value)}`);
+}
 
 interface CreateTicketInput {
   customerId: string;
@@ -28,8 +43,6 @@ interface EscalateFromChatInput {
   lastMessages: Array<{ role: string; content: string }>;
 }
 
-type TenantPrisma = any;
-
 const VALID_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   open: ['in_progress', 'closed'],
   in_progress: ['resolved', 'closed'],
@@ -40,7 +53,7 @@ const VALID_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
 @Injectable()
 export class TicketService {
   constructor(
-    @Inject(PRISMA_TENANT_CLIENT) private readonly tenantDb: TenantPrisma,
+    @Inject(PRISMA_TENANT_CLIENT) private readonly tenantDb: TenantPrismaClient,
     private readonly tenantContext: TenantContextService,
   ) {}
 
@@ -142,6 +155,7 @@ export class TicketService {
     return this.tenantDb.ticketMessage.findMany({
       where: { ticketId },
       orderBy: { createdAt: 'asc' },
+      take: 500,
       select: { id: true, senderType: true, content: true, createdAt: true },
     });
   }
@@ -208,7 +222,8 @@ export class TicketService {
       throw new NotFoundException(`Ticket ${opts.ticketId} not found`);
     }
 
-    const allowed = VALID_TRANSITIONS[ticket.status as TicketStatus] ?? [];
+    const currentStatus = assertTicketStatus(ticket.status);
+    const allowed = VALID_TRANSITIONS[currentStatus] ?? [];
     if (!allowed.includes(opts.status)) {
       throw new BadRequestException(`Cannot transition from ${ticket.status} to ${opts.status}`);
     }
@@ -266,13 +281,12 @@ export class TicketService {
       String(now.getDate()).padStart(2, '0'),
     ].join('');
 
-    const count = await this.tenantDb.ticket.count({
-      where: {
-        ticketNo: { startsWith: `${prefix}-${datePart}` },
-      },
-    });
-
-    const seq = String(count + 1).padStart(4, '0');
+    // Use a PostgreSQL sequence for atomic, race-free ticket numbering.
+    // The sequence is created per-schema by migrate-tenant-schemas.ts.
+    const result = await this.tenantDb.$queryRaw<[{ nextval: bigint }]>`
+      SELECT nextval('ticket_seq')
+    `;
+    const seq = String(Number(result[0].nextval)).padStart(4, '0');
     return `${prefix}-${datePart}-${seq}`;
   }
 }

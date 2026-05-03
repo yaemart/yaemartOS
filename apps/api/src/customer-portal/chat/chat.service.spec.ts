@@ -88,16 +88,23 @@ describe('ChatService', () => {
   describe('getSessionStream', () => {
     it('creates and returns a Subject', () => {
       const { service } = makeService();
-      const subject = service.getSessionStream('sess-1');
+      const subject = service.getSessionStream('homtone', 'sess-1');
       expect(subject).toBeDefined();
       expect(typeof subject.next).toBe('function');
     });
 
-    it('returns the same Subject on subsequent calls', () => {
+    it('returns the same Subject on subsequent calls for same tenant+session', () => {
       const { service } = makeService();
-      const s1 = service.getSessionStream('sess-1');
-      const s2 = service.getSessionStream('sess-1');
+      const s1 = service.getSessionStream('homtone', 'sess-1');
+      const s2 = service.getSessionStream('homtone', 'sess-1');
       expect(s1).toBe(s2);
+    });
+
+    it('returns different Subjects for different tenants with same sessionId', () => {
+      const { service } = makeService();
+      const s1 = service.getSessionStream('homtone', 'sess-1');
+      const s2 = service.getSessionStream('spoonlemon', 'sess-1');
+      expect(s1).not.toBe(s2);
     });
   });
 
@@ -151,7 +158,7 @@ describe('ChatService', () => {
 
     it('pushes escalated event to SSE Subject on error', async () => {
       const { service } = makeService({ geminiApiKey: undefined });
-      const subject = service.getSessionStream('sess-1');
+      const subject = service.getSessionStream('homtone', 'sess-1');
       const events: unknown[] = [];
       subject.subscribe((e) => events.push(e));
 
@@ -170,9 +177,9 @@ describe('ChatService', () => {
   describe('removeSessionStream', () => {
     it('completes and removes the Subject', () => {
       const { service } = makeService();
-      const subject = service.getSessionStream('sess-1');
+      const subject = service.getSessionStream('homtone', 'sess-1');
       const completeSpy = vi.spyOn(subject, 'complete');
-      service.removeSessionStream('sess-1');
+      service.removeSessionStream('homtone', 'sess-1');
       expect(completeSpy).toHaveBeenCalledOnce();
     });
   });

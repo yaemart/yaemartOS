@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TENANT_SCHEMAS } from '@yaemartos/db';
+import { TENANT_SCHEMAS, type TenantSchema } from '@yaemartos/db';
 import { PrismaClientManager } from '../../database/prisma.service';
+import { TenantPrismaClient } from '../../database/tenant-prisma.types';
 
 export interface AggregatedTicket {
   id: string;
@@ -40,26 +41,32 @@ export class TicketAggregationService {
 
   /**
    * Aggregates tickets across all tenant schemas (or a single brand if specified).
-   * On per-schema failures, returns partial results with failing brands listed in
-   * `partialFailures` — never throws.
+   * Queries all schemas in parallel. On per-schema failures returns partial results
+   * with failing brands listed in `partialFailures` — never throws.
+   *
+   * To avoid OOM, each schema query is capped at PER_SCHEMA_MAX rows. For exact
+   * cross-brand pagination, a future implementation should use a cursor-based
+   * approach or push pagination to a search index.
    */
   async findAll(filters: FilterOptions = {}): Promise<AggregationResult> {
     const { status, priority, brandId, page = 1, limit = 50 } = filters;
+    const clampedLimit = Math.min(limit, 200);
+    const PER_SCHEMA_MAX = Math.min(clampedLimit * page * 2, 500);
 
     const schemas = brandId ? TENANT_SCHEMAS.filter((s) => s === brandId) : [...TENANT_SCHEMAS];
 
-    const allTickets: AggregatedTicket[] = [];
-    const partialFailures: string[] = [];
-
-    for (const schema of schemas) {
-      try {
-        const client = this.prismaManager.getTenantClient(schema);
-        const tickets = await (client as any).ticket.findMany({
+    const schemaResults = await Promise.allSettled(
+      schemas.map(async (schema) => {
+        const client: TenantPrismaClient = this.prismaManager.getTenantClient(
+          schema as TenantSchema,
+        );
+        const tickets = await client.ticket.findMany({
           where: {
             ...(status ? { status } : {}),
             ...(priority ? { priority } : {}),
           },
           orderBy: { createdAt: 'desc' },
+          take: PER_SCHEMA_MAX,
           select: {
             id: true,
             ticketNo: true,
@@ -73,26 +80,31 @@ export class TicketAggregationService {
             assigneeId: true,
           },
         });
+        return { schema, tickets: tickets as Omit<AggregatedTicket, 'brand'>[] };
+      }),
+    );
 
-        allTickets.push(
-          ...tickets.map((t: Omit<AggregatedTicket, 'brand'>) => ({
-            ...t,
-            brand: schema,
-          })),
-        );
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Aggregation failed for schema ${schema}: ${reason}`);
-        partialFailures.push(schema);
+    const allTickets: AggregatedTicket[] = [];
+    const partialFailures: string[] = [];
+
+    for (const result of schemaResults) {
+      if (result.status === 'fulfilled') {
+        allTickets.push(...result.value.tickets.map((t) => ({ ...t, brand: result.value.schema })));
+      } else {
+        const failedSchema = schemas[schemaResults.indexOf(result)];
+        const reason =
+          result.reason instanceof Error ? result.reason.message : String(result.reason);
+        this.logger.error(`Aggregation failed for schema ${failedSchema}: ${reason}`);
+        partialFailures.push(failedSchema);
       }
     }
 
     allTickets.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     const total = allTickets.length;
-    const skip = (page - 1) * limit;
-    const results = allTickets.slice(skip, skip + limit);
+    const skip = (page - 1) * clampedLimit;
+    const results = allTickets.slice(skip, skip + clampedLimit);
 
-    return { results, total, page, limit, partialFailures };
+    return { results, total, page, limit: clampedLimit, partialFailures };
   }
 }

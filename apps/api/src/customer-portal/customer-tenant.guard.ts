@@ -11,7 +11,11 @@ export class CustomerTenantGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
     const rawValue = req.headers[TENANT_HEADER];
-    const brand = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    const headerBrand = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    // EventSource API cannot send custom headers; fall back to query param for SSE endpoints
+    const queryBrand =
+      !headerBrand && req.query?.['brand'] ? String(req.query['brand']) : undefined;
+    const brand = headerBrand ?? queryBrand;
 
     if (!brand || !isTenantSchema(brand)) {
       throw new BadRequestException('Missing or invalid x-yaemart-brand header');

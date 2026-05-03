@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from '../database/database.module';
+import { FeatureFlagModule } from '../common/feature-flag/feature-flag.module';
 import { MailModule } from '../mail/mail.module';
 import { SearchModule } from '../search/search.module';
 import { ArticlePublicController } from './article-public/article-public.controller';
@@ -18,6 +19,7 @@ import { TicketService } from './ticket/ticket.service';
 @Module({
   imports: [
     DatabaseModule,
+    FeatureFlagModule,
     MailModule,
     SearchModule,
     JwtModule.register({

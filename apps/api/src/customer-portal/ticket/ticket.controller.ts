@@ -10,33 +10,55 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { IsArray, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { ClsService } from 'nestjs-cls';
 import { CustomerGuard } from '../customer-auth/customer.guard';
 import { CustomerTenantGuard } from '../customer-tenant.guard';
-import { TicketService, TicketStatus } from './ticket.service';
+import { FeatureFlagGuard, RequireFeatureFlag } from '../../common/feature-flag/feature-flag.guard';
+import { TicketService, TicketPriority, TicketStatus } from './ticket.service';
 import { RequirePolicy } from '../../iam/require-policy.decorator';
 
-interface CreateTicketDto {
-  subject: string;
-  initialMessage: string;
-  priority?: string;
+class CreateTicketDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  subject!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  initialMessage!: string;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high', 'urgent'])
+  priority?: TicketPriority;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   tags?: string[];
 }
 
-interface AddMessageDto {
-  content: string;
+class AddMessageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  content!: string;
 }
 
-interface UpdateStatusDto {
-  status: TicketStatus;
+class UpdateStatusDto {
+  @IsIn(['open', 'in_progress', 'resolved', 'closed'])
+  status!: TicketStatus;
 }
 
-interface AssignDto {
-  assigneeId: string;
+class AssignDto {
+  @IsUUID()
+  assigneeId!: string;
 }
 
 @Controller('customer/tickets')
-@UseGuards(CustomerTenantGuard)
+@UseGuards(CustomerTenantGuard, FeatureFlagGuard)
+@RequireFeatureFlag('portal_ticket')
 export class TicketController {
   constructor(
     private readonly ticketService: TicketService,
@@ -53,7 +75,7 @@ export class TicketController {
       customerId,
       subject: dto.subject,
       initialMessage: dto.initialMessage,
-      priority: dto.priority as any,
+      priority: dto.priority,
       tags: dto.tags,
     });
   }
@@ -99,21 +121,34 @@ export class TicketController {
     return this.ticketService.closeByCustomer(ticketId, customerId);
   }
 
-  /** Operator: assign ticket to an agent. */
+  /**
+   * Operator: assign ticket to an agent.
+   *
+   * @note Operator callers must supply the `x-yaemart-brand` header (required by
+   * CustomerTenantGuard on this controller) to identify the brand schema.
+   * TODO(tech-debt): Move operator endpoints to a dedicated OperatorTicketController
+   * without CustomerTenantGuard to separate customer-facing and operator-facing routes.
+   */
   @Patch(':ticketId/assign')
   @RequirePolicy({ obj: 'tickets', act: 'update', field: '*' })
   async assign(@Param('ticketId') ticketId: string, @Body() dto: AssignDto) {
     return this.ticketService.assign(ticketId, dto.assigneeId);
   }
 
-  /** Operator: update ticket status. */
+  /**
+   * Operator: update ticket status.
+   * @note See assign() for the x-yaemart-brand header requirement.
+   */
   @Patch(':ticketId/status')
   @RequirePolicy({ obj: 'tickets', act: 'update', field: '*' })
   async updateStatus(@Param('ticketId') ticketId: string, @Body() dto: UpdateStatusDto) {
     return this.ticketService.updateStatus({ ticketId, status: dto.status });
   }
 
-  /** Operator: add agent reply message. */
+  /**
+   * Operator: add agent reply message.
+   * @note See assign() for the x-yaemart-brand header requirement.
+   */
   @Post(':ticketId/agent-messages')
   @HttpCode(HttpStatus.CREATED)
   @RequirePolicy({ obj: 'tickets', act: 'update', field: '*' })

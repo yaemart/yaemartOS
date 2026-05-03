@@ -17,6 +17,7 @@ function makeMockDb(opts?: {
   };
 
   return {
+    $queryRaw: vi.fn().mockResolvedValue([{ nextval: BigInt(1) }]),
     ticket: {
       findUnique: vi.fn().mockResolvedValue(ticket),
       create: vi.fn().mockImplementation(async (args: any) => ({
