@@ -89,14 +89,63 @@ model OrderLookup {
 }
 
 model Ticket {
-  id          String   @id
-  customerId  String
-  ticketNo    String
-  subject     String
-  status      String
-  createdAt   DateTime @default(now())
+  id         String    @id @default(cuid())
+  customerId String
+  sessionId  String?
+  ticketNo   String    @unique
+  subject    String
+  status     String    @default("open")
+  priority   String    @default("normal")
+  tags       String[]
+  assigneeId String?
+  slaHours   Int       @default(24)
+  slaDueAt   DateTime?
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
 
+  @@schema("homtone")
+}
+
+model TicketMessage {
+  id         String   @id @default(cuid())
+  ticketId   String
+  senderType String
+  content    String
+  createdAt  DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_message")
+  @@schema("homtone")
+}
+
+model ChatSession {
+  id              String    @id @default(cuid())
+  customerId      String?
+  sessionToken    String    @unique
+  brandId         String
+  lastActivityAt  DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  messages ChatMessage[]
+
+  @@map("chat_session")
+  @@schema("homtone")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_message")
   @@schema("homtone")
 }

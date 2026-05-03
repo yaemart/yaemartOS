@@ -23,6 +23,7 @@ import { PlatformModule } from './platform/platform.module';
 import { TerminologyModule } from './terminology/terminology.module';
 import { MailModule } from './mail/mail.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { CustomerPortalModule } from './customer-portal/customer-portal.module';
     TerminologyModule,
     MailModule,
     CustomerPortalModule,
+    AdminModule,
   ],
   providers: [
     {

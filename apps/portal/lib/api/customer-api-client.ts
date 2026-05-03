@@ -155,3 +155,114 @@ export function getProduct(slug: string, locale?: string): Promise<ProductDetail
 export function getPrivacyPolicy(locale: string): Promise<PrivacyPolicyResult> {
   return request(`/customer/config/privacy-policy?locale=${encodeURIComponent(locale)}`);
 }
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+export interface ChatSession {
+  sessionId: string;
+  sessionToken: string;
+}
+
+export function createOrResumeChatSession(
+  sessionToken?: string,
+  accessToken?: string,
+): Promise<ChatSession> {
+  return request<ChatSession>('/customer/chat/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ sessionToken }),
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+}
+
+export function sendChatMessage(
+  sessionId: string,
+  content: string,
+  locale: string,
+  accessToken?: string,
+): Promise<{ sessionId: string; status: string }> {
+  return request<{ sessionId: string; status: string }>(
+    `/customer/chat/sessions/${sessionId}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content, locale }),
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    },
+  );
+}
+
+/** Returns the SSE URL for streaming chat tokens. */
+export function chatStreamUrl(sessionId: string): string {
+  return `${API_BASE}/customer/chat/sessions/${sessionId}/stream`;
+}
+
+// ── Tickets ──────────────────────────────────────────────────────────────────
+
+export interface Ticket {
+  id: string;
+  ticketNo: string;
+  subject: string;
+  status: string;
+  priority: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  senderType: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface TicketListResult {
+  items: Ticket[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export function getTickets(page = 1, accessToken?: string): Promise<TicketListResult> {
+  return request<TicketListResult>(`/customer/tickets?page=${page}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+}
+
+export function getTicketMessages(
+  ticketId: string,
+  accessToken?: string,
+): Promise<TicketMessage[]> {
+  return request<TicketMessage[]>(`/customer/tickets/${ticketId}/messages`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+}
+
+export function createTicket(
+  data: { subject: string; initialMessage: string },
+  accessToken: string,
+): Promise<Ticket> {
+  return request<Ticket>('/customer/tickets', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function addTicketMessage(
+  ticketId: string,
+  content: string,
+  accessToken: string,
+): Promise<TicketMessage> {
+  return request<TicketMessage>(`/customer/tickets/${ticketId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function closeTicket(ticketId: string, accessToken: string): Promise<Ticket> {
+  return request<Ticket>(`/customer/tickets/${ticketId}/close`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}

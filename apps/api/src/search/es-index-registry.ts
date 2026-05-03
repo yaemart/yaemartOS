@@ -6,12 +6,15 @@
  *      Defaults to "dev" when neither is set, preventing accidental prod writes.
  *
  * S1 scope: three ops-domain indexes only.
- * Customer-domain indexes (customer-faq-{env}-{tenant}, etc.) are introduced in S3 W34-W35.
+ * Customer-domain indexes (customer-faq_*) are introduced in S3 W34-W35.
  */
 
 export const OPS_PRODUCT_KNOWLEDGE = 'ops-product_knowledge' as const;
 export const OPS_LISTING_DRAFT = 'ops-listing_draft' as const;
 export const OPS_KEYWORD_CORPUS = 'ops-keyword_corpus' as const;
+
+/** S3 W34-W35: Customer-domain FAQ knowledge base (kNN vector search). */
+export const CUSTOMER_FAQ = 'customer-faq' as const;
 
 /** Legacy placeholder index introduced in W4. Retained for health checks during migration. */
 export const LEGACY_PRODUCTS_INDEX = 'yaemartos_products' as const;
@@ -20,6 +23,8 @@ export type OpsIndexName =
   | typeof OPS_PRODUCT_KNOWLEDGE
   | typeof OPS_LISTING_DRAFT
   | typeof OPS_KEYWORD_CORPUS;
+
+export type CustomerIndexName = typeof CUSTOMER_FAQ;
 
 /**
  * Resolves the env suffix to use for index names.
@@ -164,3 +169,46 @@ export const OPS_INDEX_CONFIGS = [
   { base: OPS_LISTING_DRAFT, config: LISTING_DRAFT_MAPPING },
   { base: OPS_KEYWORD_CORPUS, config: KEYWORD_CORPUS_MAPPING },
 ] as const;
+
+/**
+ * `customer-faq-{env}`
+ * Per-brand FAQ knowledge base with kNN vector search.
+ * Introduced in S3 W34-W35.
+ *
+ * Dimension 768 matches Gemini text-embedding-004 output.
+ * knn_vector type requires OpenSearch kNN plugin (enabled on Bonsai / AWS OpenSearch).
+ */
+export const CUSTOMER_FAQ_MAPPING = {
+  settings: {
+    number_of_shards: 1,
+    number_of_replicas: 1,
+    'index.knn': true,
+  },
+  mappings: {
+    dynamic: 'strict' as const,
+    properties: {
+      faq_id: { type: 'keyword' },
+      brand_id: { type: 'keyword' },
+      locale: { type: 'keyword' },
+      product_id: { type: 'keyword' },
+      question: { type: 'text', analyzer: 'standard' },
+      answer: { type: 'text', analyzer: 'standard' },
+      question_vector: {
+        type: 'knn_vector',
+        dimension: 768,
+        method: {
+          name: 'hnsw',
+          space_type: 'cosinesimil',
+          engine: 'nmslib',
+          parameters: { ef_construction: 128, m: 16 },
+        },
+      },
+      created_at: { type: 'date' },
+    },
+  },
+} as const;
+
+/** Builds a FAQ index name scoped to a tenant (brand). */
+export function faqIndexName(brandId: string, env?: string): string {
+  return `${CUSTOMER_FAQ}-${brandId}-${resolveIndexEnv(env)}`;
+}
