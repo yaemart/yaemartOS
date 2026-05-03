@@ -19,6 +19,8 @@ export { withCache } from './decorators/cached';
 export type { CacheOptions } from './decorators/cached';
 
 export { ListingsOperations } from './operations/listings';
+export { OrdersOperations } from './operations/orders';
+export type { OrderStatusResult, OrderQueryParams } from './operations/orders';
 export { InventoryOperations } from './operations/inventory';
 export { ShopsOperations } from './operations/shops';
 

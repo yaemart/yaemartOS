@@ -96,4 +96,68 @@ describe('FeatureFlagService', () => {
       expect(await svc.isEnabled('LISTING_AI', undefined)).toBe(true);
     });
   });
+
+  describe('three-dimensional context (brand × market × language)', () => {
+    it('brand+market+language env key wins over brand+market', async () => {
+      const svc = makeService({
+        FEATURE_WARRANTY_REGISTRATION_HOMTONE_US: 'false',
+        FEATURE_WARRANTY_REGISTRATION_HOMTONE_US_EN: 'true',
+      });
+      expect(
+        await svc.isEnabled('WARRANTY_REGISTRATION', {
+          brand: 'homtone',
+          market: 'us',
+          language: 'en',
+        }),
+      ).toBe(true);
+    });
+
+    it('brand+market env key wins over brand-only when language not provided', async () => {
+      const svc = makeService({
+        FEATURE_WARRANTY_REGISTRATION_HOMTONE: 'false',
+        FEATURE_WARRANTY_REGISTRATION_HOMTONE_US: 'true',
+      });
+      expect(await svc.isEnabled('WARRANTY_REGISTRATION', { brand: 'homtone', market: 'us' })).toBe(
+        true,
+      );
+    });
+
+    it('falls back through brand → global when market/language not set', async () => {
+      const svc = makeService({
+        FEATURE_WARRANTY_REGISTRATION: 'true',
+      });
+      expect(await svc.isEnabled('WARRANTY_REGISTRATION', { brand: 'homtone' })).toBe(true);
+    });
+
+    it('legacy string signature maps to brand-only context (backward compat)', async () => {
+      const svc = makeService({ FEATURE_LISTING_AI_HOMTONE: 'true' });
+      expect(await svc.isEnabled('LISTING_AI', 'homtone')).toBe(true);
+    });
+
+    it('context object with no keys behaves like global lookup', async () => {
+      const svc = makeService({ FEATURE_ORDER_LOOKUP: 'true' });
+      expect(await svc.isEnabled('ORDER_LOOKUP', {})).toBe(true);
+    });
+
+    it('returns false when no matching key at any dimension', async () => {
+      const svc = makeService({});
+      expect(
+        await svc.isEnabled('MANUAL_DOWNLOAD', { brand: 'davivy', market: 'uk', language: 'en' }),
+      ).toBe(false);
+    });
+
+    describe('isEnabledSync three-dimensional', () => {
+      it('checks brand+market+language env key', () => {
+        const svc = makeService({ FEATURE_MANUAL_DOWNLOAD_HOMTONE_US_ES: 'true' });
+        expect(
+          svc.isEnabledSync('MANUAL_DOWNLOAD', { brand: 'homtone', market: 'us', language: 'es' }),
+        ).toBe(true);
+      });
+
+      it('falls back to brand-only when market/language missing', () => {
+        const svc = makeService({ FEATURE_MANUAL_DOWNLOAD_SPOONLEMON: 'true' });
+        expect(svc.isEnabledSync('MANUAL_DOWNLOAD', { brand: 'spoonlemon' })).toBe(true);
+      });
+    });
+  });
 });

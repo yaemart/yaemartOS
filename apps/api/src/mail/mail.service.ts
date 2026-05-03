@@ -6,6 +6,8 @@ import type { Transporter } from 'nodemailer';
 import { PrismaClientManager } from '../database/prisma.service';
 import { emailVerificationTemplate } from './templates/email-verification.html';
 import { passwordResetTemplate } from './templates/password-reset.html';
+import { warrantyConfirmationTemplate } from './templates/warranty-confirmation.html';
+import { warrantyExpiryReminderTemplate } from './templates/warranty-expiry-reminder.html';
 
 export interface SentEmailRecord {
   to: string;
@@ -73,6 +75,61 @@ export class MailService {
     const subject = `[${brandName}] 密码重置请求`;
 
     const html = passwordResetTemplate({ brandName, logoUrl, resetUrl, locale });
+
+    await this.dispatch({ from: fromAddress, to, subject, html });
+  }
+
+  async sendWarrantyConfirmation(
+    to: string,
+    locale: string,
+    brandId: string,
+    data: {
+      productSku: string;
+      serialNumber: string;
+      purchaseDate: string;
+      warrantyExpiresAt: string;
+    },
+  ): Promise<void> {
+    const brandName = this.toBrandName(brandId);
+    const [fromAddress, logoUrl] = await Promise.all([
+      this.resolveFromAddress(brandId),
+      this.resolveLogoUrl(brandId),
+    ]);
+
+    const subjectMap: Record<string, string> = {
+      en: 'Warranty Registered',
+      es: 'Garantía registrada',
+      fr: 'Garantie enregistrée',
+    };
+    const subject = `[${brandName}] ${subjectMap[locale] ?? subjectMap['en']}`;
+    const html = warrantyConfirmationTemplate({ brandName, logoUrl, locale, ...data });
+
+    await this.dispatch({ from: fromAddress, to, subject, html });
+  }
+
+  async sendWarrantyExpiryReminder(
+    to: string,
+    locale: string,
+    brandId: string,
+    data: {
+      productSku: string;
+      warrantyExpiresAt: string;
+      renewUrl: string;
+    },
+  ): Promise<void> {
+    const brandName = this.toBrandName(brandId);
+    const [fromAddress, logoUrl] = await Promise.all([
+      this.resolveFromAddress(brandId),
+      this.resolveLogoUrl(brandId),
+    ]);
+
+    const subjectMap: Record<string, string> = {
+      en: 'Your warranty expires soon',
+      es: 'Tu garantía vence pronto',
+      fr: 'Votre garantie expire bientôt',
+    };
+    const subject = `[${brandName}] ${subjectMap[locale] ?? subjectMap['en']}`;
+    const html = warrantyExpiryReminderTemplate({ brandName, logoUrl, locale, ...data });
 
     await this.dispatch({ from: fromAddress, to, subject, html });
   }

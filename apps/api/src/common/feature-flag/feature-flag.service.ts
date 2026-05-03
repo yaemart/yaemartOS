@@ -2,18 +2,31 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClientManager } from '../../database/prisma.service';
 
+export interface FeatureFlagContext {
+  brand?: string;
+  market?: string;
+  language?: string;
+}
+
 /**
- * Feature flag resolution with brand-level granularity.
+ * Feature flag resolution with brand × market × language granularity.
  *
- * Priority (highest to lowest):
- *   1. DB: SystemConfig key "feature_flag.{FLAG}_{BRAND_ID_UPPER}" — brand-scoped DB override
- *   2. DB: SystemConfig key "feature_flag.{FLAG}"                  — global DB value
- *   3. Env: FEATURE_{FLAG}_{BRAND_ID_UPPER}                        — brand-scoped env override
- *   4. Env: FEATURE_{FLAG}                                         — global env default
- *   5. false                                                        — closed by default
+ * Priority (highest → lowest):
+ *   DB  1. feature_flag.{FLAG}.{brand}.{market}.{language}  — most specific
+ *   DB  2. feature_flag.{FLAG}.{brand}.{market}
+ *   DB  3. feature_flag.{FLAG}.{brand}
+ *   DB  4. feature_flag.{FLAG}                              — global DB
+ *   Env 5. FEATURE_{FLAG}_{BRAND}_{MARKET}_{LANGUAGE}
+ *   Env 6. FEATURE_{FLAG}_{BRAND}_{MARKET}
+ *   Env 7. FEATURE_{FLAG}_{BRAND}
+ *   Env 8. FEATURE_{FLAG}                                   — global env
+ *       9. false                                            — closed by default
  *
  * DB values take precedence over env vars, enabling runtime configuration
  * via the Settings UI without requiring a redeploy.
+ *
+ * The legacy signature `isEnabled(flag, brandId?)` is preserved for backward
+ * compatibility — it maps to `isEnabled(flag, { brand: brandId })`.
  */
 @Injectable()
 export class FeatureFlagService {
@@ -22,54 +35,86 @@ export class FeatureFlagService {
     private readonly prismaManager: PrismaClientManager,
   ) {}
 
-  async isEnabled(flag: string, brandId?: string): Promise<boolean> {
+  async isEnabled(flag: string, brandOrCtx?: string | FeatureFlagContext): Promise<boolean> {
+    const ctx: FeatureFlagContext =
+      typeof brandOrCtx === 'string' ? { brand: brandOrCtx } : (brandOrCtx ?? {});
     const upperFlag = flag.toUpperCase();
+    const brand = ctx.brand?.toLowerCase();
+    const market = ctx.market?.toLowerCase();
+    const language = ctx.language?.toLowerCase();
 
-    if (brandId) {
-      const brandDbKey = `feature_flag.${upperFlag}.${brandId.toLowerCase()}`;
-      const brandDbValue = await this.getDbValue(brandDbKey);
-      if (brandDbValue !== null) {
-        return brandDbValue === 'true';
-      }
+    // DB lookups from most to least specific
+    const dbKeys: string[] = [];
+    if (brand && market && language) {
+      dbKeys.push(`feature_flag.${upperFlag}.${brand}.${market}.${language}`);
+    }
+    if (brand && market) {
+      dbKeys.push(`feature_flag.${upperFlag}.${brand}.${market}`);
+    }
+    if (brand) {
+      dbKeys.push(`feature_flag.${upperFlag}.${brand}`);
+    }
+    dbKeys.push(`feature_flag.${upperFlag}`);
 
-      const brandEnvKey = `FEATURE_${upperFlag}_${brandId.toUpperCase()}`;
-      const brandEnvValue = this.config.get<string>(brandEnvKey);
-      if (brandEnvValue !== undefined) {
-        return brandEnvValue === 'true';
+    for (const key of dbKeys) {
+      const val = await this.getDbValue(key);
+      if (val !== null) {
+        return val === 'true';
       }
     }
 
-    const globalDbKey = `feature_flag.${upperFlag}`;
-    const globalDbValue = await this.getDbValue(globalDbKey);
-    if (globalDbValue !== null) {
-      return globalDbValue === 'true';
+    // Env lookups from most to least specific
+    const envKeys: string[] = [];
+    const B = brand?.toUpperCase() ?? '';
+    const M = market?.toUpperCase() ?? '';
+    const L = language?.toUpperCase() ?? '';
+    if (B && M && L) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}_${M}_${L}`);
     }
+    if (B && M) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}_${M}`);
+    }
+    if (B) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}`);
+    }
+    envKeys.push(`FEATURE_${upperFlag}`);
 
-    const globalEnvKey = `FEATURE_${upperFlag}`;
-    const globalEnvValue = this.config.get<string>(globalEnvKey);
-    if (globalEnvValue !== undefined) {
-      return globalEnvValue === 'true';
+    for (const key of envKeys) {
+      const val = this.config.get<string>(key);
+      if (val !== undefined) {
+        return val === 'true';
+      }
     }
 
     return false;
   }
 
   /** Synchronous check using only env vars (for performance-critical hot paths). */
-  isEnabledSync(flag: string, brandId?: string): boolean {
+  isEnabledSync(flag: string, brandOrCtx?: string | FeatureFlagContext): boolean {
+    const ctx: FeatureFlagContext =
+      typeof brandOrCtx === 'string' ? { brand: brandOrCtx } : (brandOrCtx ?? {});
     const upperFlag = flag.toUpperCase();
+    const B = ctx.brand?.toUpperCase() ?? '';
+    const M = ctx.market?.toUpperCase() ?? '';
+    const L = ctx.language?.toUpperCase() ?? '';
 
-    if (brandId) {
-      const brandKey = `FEATURE_${upperFlag}_${brandId.toUpperCase()}`;
-      const brandValue = this.config.get<string>(brandKey);
-      if (brandValue !== undefined) {
-        return brandValue === 'true';
-      }
+    const envKeys: string[] = [];
+    if (B && M && L) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}_${M}_${L}`);
     }
+    if (B && M) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}_${M}`);
+    }
+    if (B) {
+      envKeys.push(`FEATURE_${upperFlag}_${B}`);
+    }
+    envKeys.push(`FEATURE_${upperFlag}`);
 
-    const globalKey = `FEATURE_${upperFlag}`;
-    const globalValue = this.config.get<string>(globalKey);
-    if (globalValue !== undefined) {
-      return globalValue === 'true';
+    for (const key of envKeys) {
+      const val = this.config.get<string>(key);
+      if (val !== undefined) {
+        return val === 'true';
+      }
     }
 
     return false;
