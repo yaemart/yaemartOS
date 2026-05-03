@@ -114,10 +114,21 @@ export interface ProductListResult {
   limit: number;
 }
 
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
 export interface ProductDetail extends ProductSummary {
   description?: string;
   images: string[];
   stock: number;
+  sku?: string;
+  faq?: FaqItem[];
+}
+
+export interface PrivacyPolicyResult {
+  content: string;
 }
 
 export function getProducts(params?: ProductListParams): Promise<ProductListResult> {
@@ -138,4 +149,10 @@ export function getProducts(params?: ProductListParams): Promise<ProductListResu
 export function getProduct(slug: string, locale?: string): Promise<ProductDetail> {
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : '';
   return request(`/api/customer/products/${encodeURIComponent(slug)}${query}`);
+}
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+export function getPrivacyPolicy(locale: string): Promise<PrivacyPolicyResult> {
+  return request(`/api/customer/config/privacy-policy?locale=${encodeURIComponent(locale)}`);
 }
