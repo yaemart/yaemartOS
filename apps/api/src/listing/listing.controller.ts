@@ -30,6 +30,8 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { BatchGenerateListingDto } from './dto/batch-generate-listing.dto';
 import { ListingService } from './listing.service';
 import { ListingVersionService } from './listing-version.service';
+import { TerminologyService } from '../terminology/terminology.service';
+import type { LocaleCode } from '../generated/prisma';
 
 @Controller('listings')
 @UseGuards(JwtAuthGuard, CasbinGuard)
@@ -40,6 +42,7 @@ export class ListingController {
     @Inject(LISTING_GENERATION_SERVICE)
     private readonly listingGeneration: IListingGenerationService,
     private readonly featureFlag: FeatureFlagService,
+    private readonly terminologyService: TerminologyService,
   ) {}
 
   /**
@@ -69,6 +72,8 @@ export class ListingController {
     @Query('pageSize') pageSize?: string,
     @Query('productId') productId?: string,
     @Query('status') status?: string,
+    @Query('shopId') shopId?: string,
+    @Query('platformId') platformId?: string,
     @Req() req?: Request,
   ) {
     const brandId: string | undefined = (req as any)?.resolvedBrandId;
@@ -78,6 +83,8 @@ export class ListingController {
       productId,
       brandId,
       status,
+      shopId,
+      platformId,
     });
   }
 
@@ -108,8 +115,10 @@ export class ListingController {
   /**
    * POST /listings/batch-generate
    * Generates Listing drafts for the same product across multiple shops/platforms in parallel.
-   * Each target results in an independent Listing record + a draft ListingVersion.
-   * Partial failures are surfaced per-target; the endpoint returns 200 unless all targets fail.
+   * Supports multi-language generation via `languages: string[]` (Cartesian product of
+   * languages × targets). Falls back to single `language` for backward compatibility.
+   * Each combo results in an independent Listing record + a draft ListingVersion.
+   * Partial failures are surfaced per-target; the endpoint returns 200 unless all combos fail.
    */
   @Post('batch-generate')
   @RequirePolicy({ obj: 'listings', act: 'write', field: '*' })
@@ -119,6 +128,16 @@ export class ListingController {
       throw new BadRequestException('targets must be a non-empty array');
     }
 
+    // Resolve language list: prefer `languages` array, fall back to single `language`
+    const baseLanguages: string[] = body.languages?.length
+      ? body.languages
+      : body.language
+        ? [body.language]
+        : [];
+    if (baseLanguages.length === 0) {
+      throw new BadRequestException('Either "languages" or "language" must be provided');
+    }
+
     const featureEnabled = await this.featureFlag.isEnabled('LISTING_AI', body.brandId);
     if (!featureEnabled) {
       throw new ForbiddenException(
@@ -126,10 +145,22 @@ export class ListingController {
       );
     }
 
+    // Feature flag: when MULTILINGUAL_LISTING_GENERATION is off, restrict to EN only
+    const multilingualEnabled = await this.featureFlag.isEnabled(
+      'MULTILINGUAL_LISTING_GENERATION',
+      body.brandId,
+    );
+    const resolvedLanguages = multilingualEnabled ? baseLanguages : ['en'];
+
     const actor = this.actor(req);
 
+    // Cartesian product: resolvedLanguages × targets
+    const combos = resolvedLanguages.flatMap((lang) =>
+      body.targets.map((target) => ({ lang, target })),
+    );
+
     const results = await Promise.allSettled(
-      body.targets.map(async (target) => {
+      combos.map(async ({ lang, target }) => {
         const platformId = await this.listingService.resolvePlatformId(target.platformCode);
 
         const listing = await this.listingService.findOrCreateDraft({
@@ -138,20 +169,26 @@ export class ListingController {
           marketId: body.marketId,
           platformId,
           shopId: target.shopId,
-          language: body.language,
+          language: lang,
           platformListingId: target.platformListingId,
         });
 
-        const input = {
+        // Inject terminology — degrade gracefully on failure
+        const terminology = await this.terminologyService
+          .findByBrandAndLocale(body.brandId, lang as LocaleCode)
+          .catch(() => []);
+
+        const input: GenerateListingInput = {
           brandId: body.brandId as any,
           platform: target.platformCode as any,
           productTitle: body.productTitle,
           productCategory: body.productCategory,
-          targetLocale: body.language as any,
+          targetLocale: lang as any,
           competitorUrls: target.competitorUrls,
           manualSellingPoints: target.manualSellingPoints,
           categoryLexicon: target.categoryLexicon,
           lingxingKeywordSeed: target.lingxingKeywordSeed,
+          terminology: terminology.map((t) => ({ term: t.term, definition: t.definition })),
         };
 
         const content = await this.listingGeneration.generateListing(input);
@@ -166,6 +203,7 @@ export class ListingController {
           listingId: listing.id,
           shopId: target.shopId,
           platformCode: target.platformCode,
+          language: lang,
           versionNumber: version.versionNumber,
           status: 'completed' as const,
         };
@@ -173,14 +211,15 @@ export class ListingController {
     );
 
     const mapped = results.map((r, i) => {
-      const target = body.targets[i]!;
+      const combo = combos[i]!;
       if (r.status === 'fulfilled') {
         return r.value;
       }
       return {
         listingId: null,
-        shopId: target.shopId,
-        platformCode: target.platformCode,
+        shopId: combo.target.shopId,
+        platformCode: combo.target.platformCode,
+        language: combo.lang,
         versionNumber: null,
         status: 'failed' as const,
         error: r.reason instanceof Error ? r.reason.message : String(r.reason),
