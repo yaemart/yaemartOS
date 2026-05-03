@@ -37,54 +37,53 @@ export interface AuthTokens {
 }
 
 export function registerCustomer(data: RegisterInput): Promise<{ message: string }> {
-  return request('/api/customer/auth/register', {
+  return request('/customer/auth/register', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 export function loginCustomer(data: { email: string; password: string }): Promise<AuthTokens> {
-  return request('/api/customer/auth/login', {
+  return request('/customer/auth/login', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
 export function verifyEmail(token: string): Promise<{ message: string }> {
-  return request(`/api/customer/auth/verify-email?token=${encodeURIComponent(token)}`, {
-    method: 'GET',
+  return request('/customer/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
   });
 }
 
 export function resendVerification(email: string): Promise<{ message: string }> {
-  return request('/api/customer/auth/resend-verification', {
+  return request('/customer/auth/resend-verification', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
 }
 
 export function forgotPassword(email: string): Promise<{ message: string }> {
-  return request('/api/customer/auth/forgot-password', {
+  return request('/customer/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
 }
 
 export function validateResetToken(token: string): Promise<{ valid: boolean }> {
-  return request(`/api/customer/auth/validate-reset-token?token=${encodeURIComponent(token)}`, {
-    method: 'GET',
-  });
+  return request(`/customer/auth/validate-reset-token?token=${encodeURIComponent(token)}`);
 }
 
 export function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-  return request('/api/customer/auth/reset-password', {
+  return request('/customer/auth/reset-password', {
     method: 'POST',
     body: JSON.stringify({ token, newPassword }),
   });
 }
 
 export function refreshToken(refreshTokenValue: string): Promise<AuthTokens> {
-  return request('/api/customer/auth/refresh', {
+  return request('/customer/auth/refresh', {
     method: 'POST',
     body: JSON.stringify({ refreshToken: refreshTokenValue }),
   });
@@ -98,33 +97,33 @@ export interface ProductListParams {
   limit?: number;
 }
 
-export interface ProductSummary {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  currency: string;
-  imageUrl?: string;
-}
-
-export interface ProductListResult {
-  items: ProductSummary[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
 export interface FaqItem {
   question: string;
   answer: string;
 }
 
+/** Matches the shape returned by ArticlePublicService.listProducts */
+export interface ProductSummary {
+  id: string;
+  sku: string;
+  slug: string;
+  title: string;
+  description: string;
+  imageUrls: string[];
+  locale: string;
+  category: string;
+}
+
+export interface ProductListResult {
+  data: ProductSummary[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Matches the shape returned by ArticlePublicService.getProduct */
 export interface ProductDetail extends ProductSummary {
-  description?: string;
-  images: string[];
-  stock: number;
-  sku?: string;
-  faq?: FaqItem[];
+  faq: FaqItem[];
 }
 
 export interface PrivacyPolicyResult {
@@ -143,16 +142,16 @@ export function getProducts(params?: ProductListParams): Promise<ProductListResu
     query.set('limit', String(params.limit));
   }
   const qs = query.toString();
-  return request(`/api/customer/products${qs ? `?${qs}` : ''}`);
+  return request(`/customer/products${qs ? `?${qs}` : ''}`);
 }
 
 export function getProduct(slug: string, locale?: string): Promise<ProductDetail> {
   const query = locale ? `?locale=${encodeURIComponent(locale)}` : '';
-  return request(`/api/customer/products/${encodeURIComponent(slug)}${query}`);
+  return request(`/customer/products/${encodeURIComponent(slug)}${query}`);
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
 export function getPrivacyPolicy(locale: string): Promise<PrivacyPolicyResult> {
-  return request(`/api/customer/config/privacy-policy?locale=${encodeURIComponent(locale)}`);
+  return request(`/customer/config/privacy-policy?locale=${encodeURIComponent(locale)}`);
 }

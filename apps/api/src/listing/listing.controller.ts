@@ -194,12 +194,7 @@ export class ListingController {
         };
 
         const content = await this.listingGeneration.generateListing(input);
-        const version = await this.versionService.createVersion(
-          listing.id,
-          content,
-          actor,
-          'draft',
-        );
+        const version = await this.versionService.createDraftVersion(listing.id, content, actor);
 
         return {
           listingId: listing.id,
@@ -270,6 +265,19 @@ export class ListingController {
       );
     }
 
+    const [terminology, existingVersions] = await Promise.all([
+      this.terminologyService.list({
+        brandId: listing.brandId,
+        locale: listing.language as LocaleCode,
+      }),
+      this.versionService.listVersions(id),
+    ]);
+
+    const existingDraftTitles = existingVersions
+      .slice(0, 5)
+      .map((v) => (v.contentSnapshot as { title?: string } | null)?.title)
+      .filter((t): t is string => Boolean(t));
+
     const input: GenerateListingInput = {
       brandId: listing.brandId as any,
       platform: listing.platform.code as any,
@@ -280,12 +288,14 @@ export class ListingController {
       manualSellingPoints: body.manualSellingPoints,
       categoryLexicon: body.categoryLexicon,
       lingxingKeywordSeed: body.lingxingKeywordSeed,
+      terminology: terminology.map((t) => ({ term: t.term, definition: t.definition })),
+      existingDraftTitles,
     };
 
     const content = await this.listingGeneration.generateListing(input);
     const actor = this.actor(req);
 
-    return this.versionService.createVersion(id, content, actor, 'draft');
+    return this.versionService.createDraftVersion(id, content, actor);
   }
 
   @Get(':id/versions')

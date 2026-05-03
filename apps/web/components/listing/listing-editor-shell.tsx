@@ -11,6 +11,7 @@ import type {
   LocaleInfo,
 } from '@/lib/api/listing-client';
 import { batchGenerateMultilingual, generateListingDraft } from '@/lib/api/listing-client';
+import { getKeywordSuggestions, getListingSummaryMcp } from '@/lib/api/ai-mcp-client';
 import type { ListingVersion } from '@/lib/mock-data';
 import { LocaleSwitcher } from './locale-switcher';
 import { VersionTimeline } from './version-timeline';
@@ -174,7 +175,8 @@ export function ListingEditorShell({
         .filter((r) => r.status === 'failed')
         .map((r) => ({ language: r.language, platformCode: r.platformCode, error: r.error }));
       setMultilingualResult({ succeeded, failed });
-      if (failed.length === 0) {
+      // Refresh whenever at least one version was written to the DB, regardless of partial failures.
+      if (succeeded > 0) {
         router.refresh();
       }
     } catch (err) {
@@ -360,6 +362,33 @@ export function ListingEditorShell({
             currentVersion={selectedVersion ?? uiVersions[0]}
             onGenerate={startGeneration}
             disabled={isGenerating}
+            onKeywordSuggestions={
+              listing.shopId
+                ? async () => {
+                    const result = await getKeywordSuggestions(
+                      accessToken,
+                      {
+                        shopId: listing.shopId,
+                        asin: listing.platformListingId ?? undefined,
+                      },
+                      brandId,
+                    );
+                    return result.keywords;
+                  }
+                : undefined
+            }
+            onListingSummary={
+              listing.shopId && listing.platformListingId
+                ? async () => {
+                    const result = await getListingSummaryMcp(
+                      accessToken,
+                      { shopId: listing.shopId, asin: listing.platformListingId! },
+                      brandId,
+                    );
+                    return { title: result.title, bullets: result.bullets };
+                  }
+                : undefined
+            }
           />
         </aside>
       </div>

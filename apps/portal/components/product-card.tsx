@@ -3,14 +3,12 @@ import Image from 'next/image';
 
 interface ProductCardProps {
   id: string;
-  sku?: string;
-  name: string;
+  sku: string;
+  title: string;
   description?: string;
-  imageUrl?: string;
+  imageUrls?: string[];
   slug: string;
   locale: string;
-  price?: number;
-  currency?: string;
 }
 
 function truncate(text: string, max: number) {
@@ -22,14 +20,13 @@ function truncate(text: string, max: number) {
 
 export function ProductCard({
   sku,
-  name,
+  title,
   description,
-  imageUrl,
+  imageUrls,
   slug,
   locale,
-  price,
-  currency,
 }: ProductCardProps) {
+  const imageUrl = imageUrls?.[0];
   return (
     <Link
       href={`/${locale}/products/${slug}`}
@@ -40,7 +37,7 @@ export function ProductCard({
         {imageUrl ? (
           <Image
             src={imageUrl}
-            alt={name}
+            alt={title}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -67,17 +64,12 @@ export function ProductCard({
       {/* Content */}
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <h3 className="text-sm font-semibold leading-snug text-brand-text group-hover:text-brand-primary transition-colors line-clamp-2">
-          {name}
+          {title}
         </h3>
-        {sku && <p className="text-xs text-brand-text-secondary font-mono">SKU: {sku}</p>}
+        <p className="text-xs text-brand-text-secondary font-mono">SKU: {sku}</p>
         {description && (
           <p className="text-xs text-brand-text-secondary leading-relaxed">
             {truncate(description, 100)}
-          </p>
-        )}
-        {price != null && (
-          <p className="mt-auto pt-2 text-sm font-semibold text-brand-primary">
-            {currency ?? 'USD'} {price.toFixed(2)}
           </p>
         )}
       </div>

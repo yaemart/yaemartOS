@@ -39,6 +39,11 @@ export interface GenerateListingInput {
   lingxingKeywordSeed?: string[];
   /** Brand terminology entries to inject into the prompt for vocabulary consistency */
   terminology?: { term: string; definition: string }[];
+  /**
+   * Titles of existing draft/active versions for this listing (most recent first).
+   * Injected as workspace context so the model avoids redundant or conflicting copy.
+   */
+  existingDraftTitles?: string[];
 }
 
 export interface ListingContent {

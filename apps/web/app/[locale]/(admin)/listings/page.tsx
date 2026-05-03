@@ -110,8 +110,25 @@ export default async function ListingsPage({
 
       {/* Listing table */}
       {data.data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-200 py-16 text-center">
-          <p className="text-sm text-zinc-500">暂无 Listing 数据</p>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-200 py-16 text-center gap-3">
+          <svg
+            className="h-10 w-10 text-zinc-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <p className="text-sm font-medium text-zinc-500">暂无 Listing 数据</p>
+          <p className="max-w-xs text-xs text-zinc-400 leading-relaxed">
+            从商品详情页进入编辑器，点击「AI 生成草稿」即可自动创建第一条 Listing。 AI 仅生成{' '}
+            <strong>Draft</strong> 版本，需手动激活后才会发布。
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-zinc-200">

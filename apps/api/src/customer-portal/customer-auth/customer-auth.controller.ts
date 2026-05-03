@@ -1,16 +1,20 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import { CustomerTenantGuard } from '../customer-tenant.guard';
 import { CustomerAuthService } from './customer-auth.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 const RATE_LIMIT = { default: { limit: 5, ttl: 900000 } } as const;
 
 @Controller('customer/auth')
-@UseGuards(CustomerTenantGuard)
+@UseGuards(CustomerTenantGuard, ThrottlerGuard)
 export class CustomerAuthController {
   constructor(
     private readonly customerAuthService: CustomerAuthService,
@@ -24,14 +28,14 @@ export class CustomerAuthController {
   }
 
   @Post('verify-email')
-  verifyEmail(@Body('token') token: string) {
-    return this.customerAuthService.verifyEmail(token, this.tenantContext.getTenant());
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.customerAuthService.verifyEmail(dto.token, this.tenantContext.getTenant());
   }
 
   @Post('resend-verification')
   @Throttle(RATE_LIMIT)
-  resendVerification(@Body('email') email: string) {
-    return this.customerAuthService.resendVerification(email, this.tenantContext.getTenant());
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.customerAuthService.resendVerification(dto.email, this.tenantContext.getTenant());
   }
 
   @Post('login')
@@ -41,14 +45,14 @@ export class CustomerAuthController {
   }
 
   @Post('refresh')
-  refresh(@Body('refreshToken') refreshToken: string) {
-    return this.customerAuthService.refreshTokens(refreshToken, this.tenantContext.getTenant());
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.customerAuthService.refreshTokens(dto.refreshToken, this.tenantContext.getTenant());
   }
 
   @Post('forgot-password')
   @Throttle(RATE_LIMIT)
-  forgotPassword(@Body('email') email: string) {
-    return this.customerAuthService.forgotPassword(email, this.tenantContext.getTenant());
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.customerAuthService.forgotPassword(dto.email, this.tenantContext.getTenant());
   }
 
   @Get('validate-reset-token')

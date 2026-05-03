@@ -25,7 +25,7 @@ export default async function ProductsPage({
   try {
     data = await getProducts({ locale, page, limit: PAGE_SIZE });
   } catch {
-    data = { items: [], total: 0, page: 1, limit: PAGE_SIZE };
+    data = { data: [], total: 0, page: 1, limit: PAGE_SIZE };
   }
 
   const totalPages = Math.ceil(data.total / data.limit);
@@ -69,7 +69,7 @@ export default async function ProductsPage({
         </div>
 
         {/* Product grid */}
-        {data.items.length === 0 ? (
+        {data.data.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-200 py-20 text-center">
             <svg
               className="mb-4 h-12 w-12 text-brand-text-secondary/30"
@@ -88,16 +88,16 @@ export default async function ProductsPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.items.map((product) => (
+            {data.data.map((product) => (
               <ProductCard
                 key={product.id}
                 id={product.id}
-                name={product.name}
-                imageUrl={product.imageUrl}
+                sku={product.sku}
+                title={product.title}
+                description={product.description}
+                imageUrls={product.imageUrls}
                 slug={product.slug}
                 locale={locale}
-                price={product.price}
-                currency={product.currency}
               />
             ))}
           </div>

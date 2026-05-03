@@ -24,7 +24,10 @@ export class UnsupportedPlatformError extends Error {
 interface PlatformContext {
   rules: PlatformListingRules;
   schema: z.ZodType<ListingContent>;
-  assemblePrompt: (input: GenerateListingInput) => string;
+  assemblePrompt: (
+    input: GenerateListingInput,
+    terminology?: { term: string; definition: string }[],
+  ) => string;
 }
 
 /** Builds a Zod schema from platform rules so limits are validated at parse time. */
@@ -80,7 +83,7 @@ export class GeminiListingGenerationService implements IListingGenerationService
     const modelId = this.config.get<string>('GEMINI_PRO_MODEL') ?? 'gemini-2.5-pro';
     const google = createGoogleGenerativeAI({ apiKey });
 
-    const prompt = ctx.assemblePrompt(input);
+    const prompt = ctx.assemblePrompt(input, input.terminology);
     this.logger.log(
       `Generating listing for product="${input.productTitle}" platform=${input.platform} model=${modelId}`,
     );

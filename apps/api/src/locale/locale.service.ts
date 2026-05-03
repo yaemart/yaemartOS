@@ -49,4 +49,17 @@ export class LocaleService {
       });
     });
   }
+
+  async setActive(marketId: string, language: LocaleCode, isActive: boolean) {
+    return this.prisma.locale.update({
+      where: { marketId_language: { marketId, language } },
+      data: { isActive },
+    });
+  }
+
+  async remove(marketId: string, language: LocaleCode) {
+    return this.prisma.locale.delete({
+      where: { marketId_language: { marketId, language } },
+    });
+  }
 }

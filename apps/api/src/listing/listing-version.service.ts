@@ -29,6 +29,14 @@ export class ListingVersionService {
   }
 
   /**
+   * AI-only entry point: always writes a draft version.
+   * Use this from generation services to make the draft-only constraint explicit.
+   */
+  createDraftVersion(listingId: string, content: ListingContent, actor?: Actor) {
+    return this.createVersion(listingId, content, actor, 'draft');
+  }
+
+  /**
    * Creates a new version for a listing (always status=draft for AI-generated content;
    * status=active is only set via activate()).
    */

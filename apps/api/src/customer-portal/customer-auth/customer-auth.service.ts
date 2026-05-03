@@ -116,31 +116,39 @@ export class CustomerAuthService {
 
   async verifyEmail(token: string, tenantId: string): Promise<{ message: string }> {
     const db = this.db(tenantId);
-
-    const rows = await db.$queryRaw<EmailVerificationRow[]>`
-      SELECT id, customer_id, expires_at, used_at FROM customer_email_verification
-      WHERE token = ${token} LIMIT 1
-    `;
-
-    if (rows.length === 0 || rows[0].used_at !== null) {
-      throw new BadRequestException({ code: 'TOKEN_ALREADY_USED' });
-    }
-    if (rows[0].expires_at < new Date()) {
-      throw new BadRequestException({ code: 'TOKEN_EXPIRED' });
-    }
-
-    const { id: verificationId, customer_id: customerId } = rows[0];
     const now = new Date();
 
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        UPDATE customer SET is_active = true, email_verified_at = ${now}, updated_at = ${now}
-        WHERE id = ${customerId}
+    // Atomic claim: mark the token as used in a single conditional UPDATE.
+    // Returns the row only if the token existed, was unused, and has not expired.
+    const claimed = await db.$queryRaw<Pick<EmailVerificationRow, 'id' | 'customer_id'>[]>`
+      UPDATE customer_email_verification
+      SET used_at = ${now}
+      WHERE token = ${token}
+        AND used_at IS NULL
+        AND expires_at > ${now}
+      RETURNING id, customer_id
+    `;
+
+    if (claimed.length === 0) {
+      // Distinguish "token existed but already used/expired" vs "never existed".
+      const existing = await db.$queryRaw<Pick<EmailVerificationRow, 'used_at' | 'expires_at'>[]>`
+        SELECT used_at, expires_at FROM customer_email_verification WHERE token = ${token} LIMIT 1
       `;
-      await tx.$executeRaw`
-        UPDATE customer_email_verification SET used_at = ${now} WHERE id = ${verificationId}
-      `;
-    });
+      if (existing.length === 0) {
+        throw new BadRequestException({ code: 'TOKEN_ALREADY_USED' });
+      }
+      if (existing[0].expires_at < now) {
+        throw new BadRequestException({ code: 'TOKEN_EXPIRED' });
+      }
+      throw new BadRequestException({ code: 'TOKEN_ALREADY_USED' });
+    }
+
+    const { customer_id: customerId } = claimed[0];
+
+    await db.$executeRaw`
+      UPDATE customer SET is_active = true, email_verified_at = ${now}, updated_at = ${now}
+      WHERE id = ${customerId}
+    `;
 
     return { message: 'EMAIL_VERIFIED' };
   }
@@ -248,30 +256,34 @@ export class CustomerAuthService {
   }
 
   async forgotPassword(email: string, tenantId: string): Promise<{ message: string }> {
-    try {
-      const db = this.db(tenantId);
+    const db = this.db(tenantId);
 
-      const rows = await db.$queryRaw<CustomerRow[]>`
-        SELECT id, email, is_active FROM customer WHERE email = ${email} LIMIT 1
+    const rows = await db.$queryRaw<CustomerRow[]>`
+      SELECT id, email, is_active FROM customer WHERE email = ${email} LIMIT 1
+    `;
+
+    if (rows.length > 0 && rows[0].is_active) {
+      const customer = rows[0];
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_HOURS * 3600 * 1000);
+      const now = new Date();
+
+      await db.$executeRaw`
+        INSERT INTO customer_password_reset (id, customer_id, token, expires_at, created_at)
+        VALUES (gen_random_uuid()::text, ${customer.id}, ${token}, ${expiresAt}, ${now})
       `;
 
-      if (rows.length > 0 && rows[0].is_active) {
-        const customer = rows[0];
-        const token = randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + RESET_TOKEN_HOURS * 3600 * 1000);
-        const now = new Date();
-
-        await db.$executeRaw`
-          INSERT INTO customer_password_reset (id, customer_id, token, expires_at, created_at)
-          VALUES (gen_random_uuid()::text, ${customer.id}, ${token}, ${expiresAt}, ${now})
-        `;
-
+      // Mail failures are caught narrowly so the caller still gets 200 (prevents
+      // distinguishing "email sent" from "email not found"), but DB/infra failures
+      // propagate normally as 5xx.
+      try {
         await this.mailService.sendPasswordReset(customer.email, token, tenantId, 'zh');
+      } catch {
+        // SMTP failure: token is stored in DB so the user can retry; log via MailService.
       }
-    } catch {
-      // Intentionally swallowed — always return 200 to prevent email enumeration
     }
 
+    // Always return 200 regardless of whether the email existed — prevents enumeration.
     return { message: 'PASSWORD_RESET_EMAIL_SENT' };
   }
 

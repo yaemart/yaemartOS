@@ -29,7 +29,7 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const mainImage = product.imageUrl ?? product.images?.[0];
+  const mainImage = product.imageUrls?.[0];
 
   return (
     <div className="min-h-screen bg-brand-bg">
@@ -58,7 +58,7 @@ export default async function ProductDetailPage({
             {mainImage ? (
               <Image
                 src={mainImage}
-                alt={product.name}
+                alt={product.title}
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
@@ -103,15 +103,9 @@ export default async function ProductDetailPage({
               ))}
             </div>
 
-            <h1 className="text-2xl font-bold leading-snug text-brand-text">{product.name}</h1>
+            <h1 className="text-2xl font-bold leading-snug text-brand-text">{product.title}</h1>
 
-            {product.sku && (
-              <p className="mt-2 font-mono text-xs text-brand-text-secondary">SKU: {product.sku}</p>
-            )}
-
-            <p className="mt-3 text-xl font-semibold text-brand-primary">
-              {product.currency ?? 'USD'} {product.price.toFixed(2)}
-            </p>
+            <p className="mt-2 font-mono text-xs text-brand-text-secondary">SKU: {product.sku}</p>
 
             {product.description && (
               <div className="mt-4">
@@ -123,16 +117,16 @@ export default async function ProductDetailPage({
             )}
 
             {/* Extra images */}
-            {product.images && product.images.length > 1 && (
+            {product.imageUrls && product.imageUrls.length > 1 && (
               <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
-                {product.images.map((img, i) => (
+                {product.imageUrls.map((img, i) => (
                   <div
                     key={i}
                     className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-zinc-200"
                   >
                     <Image
                       src={img}
-                      alt={`${product.name} ${i + 1}`}
+                      alt={`${product.title} ${i + 1}`}
                       fill
                       className="object-cover"
                       sizes="64px"

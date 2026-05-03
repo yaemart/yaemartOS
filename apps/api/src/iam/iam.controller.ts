@@ -6,7 +6,6 @@ import { FeatureFlagService } from '../common/feature-flag/feature-flag.service'
 import { CasbinService } from './casbin.service';
 
 const KNOWN_OBJECTS = [
-  'dashboard:read',
   'products:read',
   'products:write',
   'listings:read',
@@ -21,6 +20,8 @@ const KNOWN_OBJECTS = [
   'iam:write',
   'terminology:read',
   'terminology:write',
+  'migration:read',
+  'migration:write',
 ] as const;
 
 /**
@@ -44,19 +45,25 @@ type ActionDescriptor = {
  * discover the full API surface without reading documentation.
  */
 const CAPABILITY_ACTIONS: Partial<Record<string, ActionDescriptor[]>> = {
-  'dashboard:read': [{ method: 'GET', path: '/dashboard', description: '获取看板指标' }],
   'products:read': [
     { method: 'GET', path: '/products', description: '列出商品' },
     { method: 'GET', path: '/products/:id', description: '查看商品详情' },
   ],
   'products:write': [
     { method: 'POST', path: '/products', description: '创建商品' },
-    { method: 'PATCH', path: '/products/:id', description: '更新商品' },
+    { method: 'PATCH', path: '/products/:id', description: '更新商品元信息' },
+    {
+      method: 'PUT',
+      path: '/products/:id/content',
+      description: '写入商品富内容（locale+payload）',
+    },
+    { method: 'POST', path: '/products/:id/faq', description: 'AI 生成商品 FAQ' },
     { method: 'DELETE', path: '/products/:id', description: '删除商品' },
   ],
   'listings:read': [
     { method: 'GET', path: '/listings', description: '列出 Listing' },
-    { method: 'GET', path: '/listings/:id', description: '查看 Listing 详情（含版本列表）' },
+    { method: 'GET', path: '/listings/:id', description: '查看 Listing 详情' },
+    { method: 'GET', path: '/listings/:id/versions', description: '列出 Listing 历史版本' },
     { method: 'GET', path: '/listings/matrix', description: '获取 Listing 相似度矩阵分析' },
     { method: 'GET', path: '/locales', description: '获取市场可用语言列表（供语言切换器使用）' },
   ],
@@ -65,16 +72,43 @@ const CAPABILITY_ACTIONS: Partial<Record<string, ActionDescriptor[]>> = {
     { method: 'PATCH', path: '/listings/:id', description: '更新 Listing 元信息' },
     { method: 'DELETE', path: '/listings/:id', description: '删除 Listing' },
     { method: 'POST', path: '/listings/:id/generate', description: 'AI 生成 Listing 草稿（同步）' },
+    { method: 'POST', path: '/listings/batch-generate', description: '跨平台批量 AI 生成 Listing' },
     {
-      method: 'POST',
-      path: '/listings/:id/versions/:versionId/activate',
-      description: '激活指定 Listing 版本',
+      method: 'PATCH',
+      path: '/listings/:id/versions/:versionNumber/activate',
+      description: '激活指定 Listing 版本（versionNumber 为整数序号）',
     },
+  ],
+  'categories:read': [
+    { method: 'GET', path: '/categories', description: '列出品类' },
+    { method: 'GET', path: '/categories/:id', description: '查看品类详情' },
+    { method: 'GET', path: '/categories/:id/template', description: '获取品类内容模板' },
+  ],
+  'categories:write': [
+    { method: 'POST', path: '/categories', description: '创建品类' },
+    { method: 'PATCH', path: '/categories/:id', description: '更新品类信息' },
+    { method: 'DELETE', path: '/categories/:id', description: '删除品类' },
     {
-      method: 'POST',
-      path: '/listings/batch-generate',
-      description: '跨平台批量 AI 生成 Listing',
+      method: 'PUT',
+      path: '/categories/:id/template',
+      description: '写入品类内容模板（按 locale upsert）',
     },
+  ],
+  'migration:read': [
+    {
+      method: 'GET',
+      path: '/migration/path-a/shops',
+      description: '列出可用于 Path A 导入的领星店铺',
+    },
+    { method: 'GET', path: '/migration/path-a/jobs', description: '列出近期 Path A 导入任务' },
+    {
+      method: 'GET',
+      path: '/migration/path-a/jobs/:jobId',
+      description: '查询 Path A 导入任务状态',
+    },
+  ],
+  'migration:write': [
+    { method: 'POST', path: '/migration/path-a/jobs', description: '触发 Path A 导入任务' },
   ],
   'shops:read': [
     { method: 'GET', path: '/shops', description: '列出当前品牌的店铺' },
@@ -93,12 +127,27 @@ const CAPABILITY_ACTIONS: Partial<Record<string, ActionDescriptor[]>> = {
     { method: 'GET', path: '/settings/connections', description: '服务连接健康状态' },
     { method: 'GET', path: '/settings/brands', description: '列出品牌及主题配置' },
     { method: 'GET', path: '/settings/ai-cost', description: 'AI 成本摘要与预算告警' },
+    { method: 'GET', path: '/markets', description: '列出市场' },
+    { method: 'GET', path: '/markets/:id', description: '查看市场详情' },
+    { method: 'GET', path: '/platforms', description: '列出平台' },
+    { method: 'GET', path: '/platforms/:id', description: '查看平台详情' },
+    { method: 'GET', path: '/locales/all', description: '列出市场的全部语言配置（含停用）' },
   ],
   'settings:write': [
     { method: 'PUT', path: '/settings/feature-flags/:key', description: '设置 Feature Flag 值' },
     { method: 'PUT', path: '/settings/ai-routing/:key', description: '设置 AI 路由规则' },
     { method: 'PATCH', path: '/settings/brands/:id', description: '更新品牌主题' },
     { method: 'PUT', path: '/settings/ai-budget/:key', description: '设置 AI 预算上限' },
+    { method: 'POST', path: '/markets', description: '创建市场' },
+    { method: 'PATCH', path: '/markets/:id', description: '更新市场信息' },
+    { method: 'DELETE', path: '/markets/:id', description: '删除市场' },
+    { method: 'POST', path: '/locales/:marketId', description: '为市场添加语言' },
+    {
+      method: 'PATCH',
+      path: '/locales/:marketId/:language',
+      description: '设置语言为主要/启用/禁用',
+    },
+    { method: 'DELETE', path: '/locales/:marketId/:language', description: '从市场移除语言' },
   ],
   'iam:read': [
     {

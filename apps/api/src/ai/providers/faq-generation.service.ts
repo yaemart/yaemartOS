@@ -16,13 +16,16 @@ type FaqPayload = {
   model: string;
 };
 
-const FAQ_SYSTEM_PROMPT = `You are an expert e-commerce product FAQ writer. 
-Given product information, generate 3-5 clear and helpful FAQ items in the format:
-Q: <question>
-A: <answer>
+const FAQ_SYSTEM_PROMPT = `You are an expert e-commerce product FAQ writer.
+Given product information, generate 3-5 clear, helpful FAQ items that address common customer concerns.
+Keep answers concise (2-3 sentences max).
 
-Each Q/A pair should address common customer concerns about the product.
-Keep answers concise and informative (2-3 sentences max).`;
+Respond ONLY with a JSON object matching this schema:
+{
+  "faqs": [
+    { "question": "string", "answer": "string" }
+  ]
+}`;
 
 @Injectable()
 export class FaqGenerationService {
@@ -72,14 +75,17 @@ export class FaqGenerationService {
         : []),
     ].join('\n');
 
-    const prompt = `${FAQ_SYSTEM_PROMPT}\n\nProduct Information:\n${productInfo}\n\nLanguage: ${locale}\n\nGenerate FAQs now:`;
+    const userPrompt = `Product Information:\n${productInfo}\n\nLanguage: ${locale}\n\nGenerate FAQs now:`;
 
     this.logger.log(`Generating FAQ for product=${productId} locale=${locale}`);
 
     const start = Date.now();
-    let rawText: string;
+    let parsed: { faqs?: { question: string; answer: string }[] };
     try {
-      rawText = await this.glm.generateText(prompt);
+      parsed = await this.glm.generateJson<{ faqs?: { question: string; answer: string }[] }>(
+        FAQ_SYSTEM_PROMPT,
+        userPrompt,
+      );
     } catch (err) {
       this.logger.error(`GLM FAQ generation failed for product=${productId}`, err);
       throw new ServiceUnavailableException('FAQ generation service is temporarily unavailable');
@@ -92,12 +98,15 @@ export class FaqGenerationService {
       model: glmModel,
       taskType: 'faq',
       brandId: product.brand?.slug,
-      promptTokens: Math.ceil(prompt.length / 4),
-      completionTokens: Math.ceil(rawText.length / 4),
+      promptTokens: Math.ceil((FAQ_SYSTEM_PROMPT.length + userPrompt.length) / 4),
+      completionTokens: Math.ceil(JSON.stringify(parsed).length / 4),
       durationMs,
     });
 
-    const faqs = this.parseFaqs(rawText);
+    const rawFaqs = Array.isArray(parsed?.faqs) ? parsed.faqs : [];
+    const faqs = rawFaqs
+      .filter((f) => f && typeof f.question === 'string' && typeof f.answer === 'string')
+      .slice(0, 5);
 
     const payload: FaqPayload = {
       faqs,
@@ -132,36 +141,5 @@ export class FaqGenerationService {
 
     this.logger.log(`FAQ upserted for product=${productId} locale=${locale} count=${faqs.length}`);
     return payload;
-  }
-
-  private parseFaqs(text: string): FaqItem[] {
-    const faqs: FaqItem[] = [];
-    const lines = text
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    let currentQuestion: string | null = null;
-    let currentAnswer: string[] = [];
-
-    for (const line of lines) {
-      if (line.startsWith('Q:') || line.match(/^\d+\.\s*Q:/)) {
-        if (currentQuestion && currentAnswer.length > 0) {
-          faqs.push({ question: currentQuestion, answer: currentAnswer.join(' ') });
-        }
-        currentQuestion = line.replace(/^(\d+\.\s*)?Q:\s*/, '').trim();
-        currentAnswer = [];
-      } else if (line.startsWith('A:') && currentQuestion) {
-        currentAnswer = [line.replace(/^A:\s*/, '').trim()];
-      } else if (currentQuestion && currentAnswer.length > 0 && !line.startsWith('Q:')) {
-        currentAnswer.push(line);
-      }
-    }
-
-    if (currentQuestion && currentAnswer.length > 0) {
-      faqs.push({ question: currentQuestion, answer: currentAnswer.join(' ') });
-    }
-
-    return faqs.slice(0, 5);
   }
 }

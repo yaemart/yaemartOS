@@ -25,13 +25,13 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
     CREATE TABLE IF NOT EXISTS ${s}.customer (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       email TEXT NOT NULL,
-      "passwordHash" TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
       name TEXT,
-      "isActive" BOOLEAN NOT NULL DEFAULT false,
-      "emailVerifiedAt" TIMESTAMP(3),
+      is_active BOOLEAN NOT NULL DEFAULT false,
+      email_verified_at TIMESTAMP(3),
       phone TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(email)
     )
   `);
@@ -39,66 +39,66 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.customer_email_verification (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
       token TEXT NOT NULL UNIQUE,
-      "expiresAt" TIMESTAMP(3) NOT NULL,
-      "usedAt" TIMESTAMP(3),
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      expires_at TIMESTAMP(3) NOT NULL,
+      used_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.customer_password_reset (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
       token TEXT NOT NULL UNIQUE,
-      "expiresAt" TIMESTAMP(3) NOT NULL,
-      "usedAt" TIMESTAMP(3),
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      expires_at TIMESTAMP(3) NOT NULL,
+      used_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.customer_refresh_token (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
-      "tokenHash" TEXT NOT NULL UNIQUE,
-      "expiresAt" TIMESTAMP(3) NOT NULL,
-      "revokedAt" TIMESTAMP(3),
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP(3) NOT NULL,
+      revoked_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.warranty_registration (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
-      "productSku" TEXT NOT NULL,
+      customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      product_sku TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'registered',
-      "registeredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      registered_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.order_lookup (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT,
-      "orderNumber" TEXT NOT NULL,
+      customer_id TEXT,
+      order_number TEXT NOT NULL,
       channel TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE("orderNumber")
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(order_number)
     )
   `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${s}.ticket (
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      "customerId" TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
-      "ticketNo" TEXT NOT NULL,
+      customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
+      ticket_no TEXT NOT NULL,
       subject TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open',
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE("ticketNo")
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(ticket_no)
     )
   `);
 }
