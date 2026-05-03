@@ -8,6 +8,7 @@ import { ListingsOperations } from './operations/listings';
 import { InventoryOperations } from './operations/inventory';
 import { ShopsOperations } from './operations/shops';
 import { OrdersOperations } from './operations/orders';
+import { AdvertisingOperations } from './operations/advertising';
 
 @Injectable()
 export class LingxingClient {
@@ -15,6 +16,7 @@ export class LingxingClient {
   public readonly inventory: InventoryOperations;
   public readonly shops: ShopsOperations;
   public readonly orders: OrdersOperations;
+  public readonly advertising: AdvertisingOperations;
 
   constructor(
     @Inject(LINGXING_CLIENT_OPTIONS) options: LingxingClientOptions,
@@ -27,5 +29,6 @@ export class LingxingClient {
     this.inventory = new InventoryOperations(transport, rateLimiter, redis, prefix);
     this.shops = new ShopsOperations(transport, rateLimiter);
     this.orders = new OrdersOperations(transport, rateLimiter);
+    this.advertising = new AdvertisingOperations(transport, rateLimiter);
   }
 }

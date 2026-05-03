@@ -58,3 +58,29 @@ export interface ListingContent {
 
 export type { ImageBrief, ImageBriefStatus, ImageAssetType, ImageAssetSpec } from './image-brief';
 export { AMAZON_EN_ASSET_SPECS } from './image-brief';
+
+export type AdType = 'sp' | 'sd' | 'sb' | 'walmart_sp';
+
+export interface AdMetricsSummary {
+  totalSpend: number;
+  totalSales: number;
+  totalClicks: number;
+  totalImpressions: number;
+  totalOrders: number;
+}
+
+export interface AdDailyBucket {
+  date: string;
+  adType: AdType;
+  spend: number;
+  sales: number;
+  impressions: number;
+  clicks: number;
+  orders: number;
+}
+
+export interface AdDashboardResponse {
+  daily: AdDailyBucket[];
+  totals: AdMetricsSummary;
+  acos: number | null;
+}
