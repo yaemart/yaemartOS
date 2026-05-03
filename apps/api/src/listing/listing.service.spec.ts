@@ -26,9 +26,14 @@ function createService() {
   } as any;
 
   const auditService = { logWrite: vi.fn() } as any;
+  const embeddingService = {
+    pairwiseSimilarity: vi.fn().mockResolvedValue({}),
+    cosineSimilarity: vi.fn().mockReturnValue(1),
+    embed: vi.fn().mockResolvedValue([0.1, 0.2]),
+  } as any;
 
-  const service = new ListingService(prismaManager, auditService);
-  return { service, prisma, auditService };
+  const service = new ListingService(prismaManager, auditService, embeddingService);
+  return { service, prisma, auditService, embeddingService };
 }
 
 const baseListing = {

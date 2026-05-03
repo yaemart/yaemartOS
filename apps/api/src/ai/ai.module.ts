@@ -5,6 +5,7 @@ import { FaqGenerationService } from './providers/faq-generation.service';
 import { LingxingMcpToolService } from './providers/lingxing-mcp-tool.service';
 import { ModelRouterService } from './model-router.service';
 import { CostTrackingService } from './cost-tracking.service';
+import { EmbeddingService } from './embedding.service';
 import { AiController } from './ai.controller';
 import {
   LISTING_GENERATION_SERVICE,
@@ -31,6 +32,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
     FaqGenerationService,
     ModelRouterService,
     CostTrackingService,
+    EmbeddingService,
     AuditService,
     LingxingMcpToolService,
     {
@@ -55,6 +57,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
     GlmGenerationService,
     ModelRouterService,
     CostTrackingService,
+    EmbeddingService,
   ],
 })
 export class AiModule {}

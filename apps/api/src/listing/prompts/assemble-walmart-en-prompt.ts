@@ -6,8 +6,31 @@ import { WALMART_EN_LIMITS } from '../rules/walmart-en-limits';
  * Mirrors the structure of assembleAmazonEnPrompt but uses Walmart
  * terminology (Key Features, Short Description, Search Keywords) and
  * Walmart-specific character constraints.
+ *
+ * Brand voice guidelines are static for S1; will move to SystemConfig in S2+.
  */
+
+const BRAND_VOICE: Record<string, string> = {
+  homtone:
+    'Brand voice: warm, approachable, and trustworthy. Friendly, confident tone. ' +
+    'Emphasize ease of use, family-friendly design, and reliability. Avoid technical jargon.',
+  spoonlemon:
+    'Brand voice: playful, cheerful, and practical. Light, upbeat tone. ' +
+    'Emphasize everyday convenience, clever design, and value for money.',
+  davivy:
+    'Brand voice: sophisticated, aspirational, quality-focused. Refined, confident tone. ' +
+    'Emphasize premium materials, craftsmanship, and lifestyle elevation.',
+  tysun:
+    'Brand voice: energetic, adventurous, performance-driven. Bold, active tone. ' +
+    'Emphasize durability, outdoor performance, and an active lifestyle.',
+};
+
 export function assembleWalmartEnPrompt(input: GenerateListingInput): string {
+  const voiceGuide = BRAND_VOICE[input.brandId?.toLowerCase() ?? ''];
+  const brandVoiceSection = voiceGuide
+    ? `Brand Voice Guide:\n${voiceGuide}`
+    : `Brand: ${input.brandId} (no specific voice guide; write professionally and benefit-focused).`;
+
   const competitorSection =
     input.competitorUrls && input.competitorUrls.length > 0
       ? `Competitor reference URLs (study style, do NOT copy text):\n${input.competitorUrls.map((u) => `  - ${u}`).join('\n')}`
@@ -29,6 +52,8 @@ export function assembleWalmartEnPrompt(input: GenerateListingInput): string {
 
   return `You are an expert Walmart Marketplace copywriter for the brand "${input.brandId}" (platform: walmart).
 Write a complete Walmart EN product listing in valid JSON matching the provided schema.
+
+# ${brandVoiceSection}
 
 # Product Information
 - Product title: ${input.productTitle}

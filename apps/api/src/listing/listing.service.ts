@@ -7,6 +7,7 @@ import {
 import { ListingStatus, TrafficStrategy, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
+import { EmbeddingService } from '../ai/embedding.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
@@ -51,6 +52,7 @@ export class ListingService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly auditService: AuditService,
+    private readonly embeddingService: EmbeddingService,
   ) {}
 
   private get prisma() {
@@ -232,6 +234,44 @@ export class ListingService {
     });
 
     return { id, deleted: true };
+  }
+
+  async getMatrix(productId: string, brandId: string) {
+    const listings = await this.prisma.listing.findMany({
+      where: { productId, brandId, status: { not: ListingStatus.archived } },
+      include: {
+        platform: { select: { code: true, name: true } },
+        shop: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const items = listings.filter((l) => !!l.title).map((l) => ({ id: l.id, text: l.title! }));
+
+    const similarityMatrix =
+      items.length >= 2 ? await this.embeddingService.pairwiseSimilarity(items) : {};
+
+    const strategyDistribution = listings.reduce<Record<string, number>>((acc, l) => {
+      acc[l.trafficStrategy] = (acc[l.trafficStrategy] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      listings: listings.map((l) => ({
+        id: l.id,
+        title: l.title,
+        platformCode: l.platform.code,
+        platformName: l.platform.name,
+        shopName: l.shop.name,
+        trafficStrategy: l.trafficStrategy,
+        isPrimary: l.isPrimary,
+        status: l.status,
+        language: l.language,
+      })),
+      similarityMatrix,
+      strategyDistribution,
+      salesAvailableFrom: 'S4' as const,
+    };
   }
 
   async resolvePlatformId(platformCode: string): Promise<string> {

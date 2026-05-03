@@ -82,4 +82,35 @@ describe('assembleWalmartEnPrompt', () => {
     const prompt = assembleWalmartEnPrompt(baseInput());
     expect(prompt).toContain('platform: walmart');
   });
+
+  describe('Brand Voice injection', () => {
+    it('injects homtone voice guide for homtone brand', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ brandId: 'homtone' }));
+      expect(prompt).toContain('Brand Voice Guide');
+      expect(prompt.toLowerCase()).toContain('warm');
+    });
+
+    it('injects spoonlemon voice guide', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ brandId: 'spoonlemon' }));
+      expect(prompt).toContain('Brand Voice Guide');
+      expect(prompt.toLowerCase()).toContain('playful');
+    });
+
+    it('injects davivy voice guide', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ brandId: 'davivy' }));
+      expect(prompt).toContain('Brand Voice Guide');
+      expect(prompt.toLowerCase()).toContain('sophisticated');
+    });
+
+    it('injects tysun voice guide', () => {
+      const prompt = assembleWalmartEnPrompt(baseInput({ brandId: 'tysun' }));
+      expect(prompt).toContain('Brand Voice Guide');
+      expect(prompt.toLowerCase()).toContain('energetic');
+    });
+
+    it('uses professional fallback for an unknown brand', () => {
+      const prompt = assembleWalmartEnPrompt({ ...baseInput(), brandId: 'acme' as any });
+      expect(prompt).toContain('no specific voice guide');
+    });
+  });
 });

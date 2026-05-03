@@ -42,6 +42,26 @@ export class ListingController {
     private readonly featureFlag: FeatureFlagService,
   ) {}
 
+  /**
+   * GET /listings/matrix?productId=xxx
+   * Returns a matrix analysis for all listings of a given product:
+   * - similarity matrix (embedding cosine distance between titles)
+   * - traffic strategy distribution
+   * Sales/impression data is deferred to S4; the field `salesAvailableFrom` signals this.
+   */
+  @Get('matrix')
+  @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
+  async getMatrix(@Query('productId') productId: string, @Req() req: Request) {
+    if (!productId) {
+      throw new BadRequestException('productId query param is required');
+    }
+    const brandId: string | undefined = (req as any)?.resolvedBrandId;
+    if (!brandId) {
+      throw new BadRequestException('x-yaemart-brand header is required');
+    }
+    return this.listingService.getMatrix(productId, brandId);
+  }
+
   @Get()
   @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
   async list(
@@ -99,7 +119,7 @@ export class ListingController {
       throw new BadRequestException('targets must be a non-empty array');
     }
 
-    const featureEnabled = this.featureFlag.isEnabled('LISTING_AI', body.brandId);
+    const featureEnabled = await this.featureFlag.isEnabled('LISTING_AI', body.brandId);
     if (!featureEnabled) {
       throw new ForbiddenException(
         'Listing AI generation is currently disabled (feature flag off)',
@@ -202,7 +222,7 @@ export class ListingController {
   ) {
     const listing = await this.listingService.getById(id);
 
-    const featureEnabled = this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
+    const featureEnabled = await this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
     if (!featureEnabled) {
       throw new ForbiddenException(
         'Listing AI generation is currently disabled (feature flag off)',
