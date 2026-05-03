@@ -266,10 +266,7 @@ export class ListingController {
     }
 
     const [terminology, existingVersions] = await Promise.all([
-      this.terminologyService.list({
-        brandId: listing.brandId,
-        locale: listing.language as LocaleCode,
-      }),
+      this.terminologyService.findByBrandAndLocale(listing.brandId, listing.language as LocaleCode),
       this.versionService.listVersions(id),
     ]);
 

@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
 import { LocaleCode } from '../generated/prisma';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CasbinGuard } from '../iam/casbin.guard';
@@ -56,7 +56,7 @@ export class LocaleController {
    */
   @Get('all')
   @RequirePolicy({ obj: 'settings', act: 'read', field: '*' })
-  findAll(@Query('marketId') @IsString() @IsNotEmpty() marketId: string) {
+  findAll(@Query('marketId') marketId: string) {
     return this.localeService.findByMarket(marketId);
   }
 
