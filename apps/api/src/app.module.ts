@@ -19,6 +19,7 @@ import { MigrationModule } from './migration/migration.module';
 import { SettingsModule } from './settings/settings.module';
 import { LocaleModule } from './locale/locale.module';
 import { TerminologyModule } from './terminology/terminology.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { TerminologyModule } from './terminology/terminology.module';
     SettingsModule,
     LocaleModule,
     TerminologyModule,
+    MailModule,
   ],
   providers: [
     {
