@@ -43,11 +43,11 @@ interface OrderStatusPageProps {
 
 export default function OrderStatusPage({ params: _params }: OrderStatusPageProps) {
   const [orderNumber, setOrderNumber] = useState('');
-  const [email, setEmail] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [turnstileError, setTurnstileError] = useState(false);
   const turnstileContainerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const turnstileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OrderLookupResult | null>(null);
@@ -56,9 +56,12 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
 
   const initTurnstile = useCallback((node: HTMLDivElement | null) => {
     if (!node) {
+      if (turnstileTimerRef.current !== null) {
+        clearTimeout(turnstileTimerRef.current);
+        turnstileTimerRef.current = null;
+      }
       return;
     }
-    turnstileContainerRef.current = node;
 
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
     if (!siteKey || typeof window === 'undefined') {
@@ -77,7 +80,7 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
           'expired-callback': () => setTurnstileToken(''),
         });
       } else {
-        setTimeout(tryRender, 500);
+        turnstileTimerRef.current = setTimeout(tryRender, 500);
       }
     };
     tryRender();
@@ -97,7 +100,7 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
       setError(null);
 
       try {
-        const res = await lookupOrder({ orderNumber, email, turnstileToken });
+        const res = await lookupOrder({ orderNumber, turnstileToken });
 
         if (res.found) {
           setResult(res);
@@ -126,7 +129,7 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
         setLoading(false);
       }
     },
-    [orderNumber, email, turnstileToken],
+    [orderNumber, turnstileToken],
   );
 
   return (
@@ -153,20 +156,6 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
               onChange={(e) => setOrderNumber(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
               placeholder="e.g. 123-4567890-1234567"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-              placeholder="The email used for your order"
             />
           </div>
 
@@ -246,7 +235,6 @@ export default function OrderStatusPage({ params: _params }: OrderStatusPageProp
             onClick={() => {
               setResult(null);
               setOrderNumber('');
-              setEmail('');
               setTurnstileToken('');
               if (window.turnstile && widgetIdRef.current) {
                 window.turnstile.reset(widgetIdRef.current);

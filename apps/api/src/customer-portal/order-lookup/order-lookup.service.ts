@@ -33,7 +33,6 @@ export class OrderLookupService {
 
   async lookup(
     orderNumber: string,
-    email: string,
     turnstileToken: string,
     ip: string,
   ): Promise<OrderLookupResult | OrderLookupNotFound> {

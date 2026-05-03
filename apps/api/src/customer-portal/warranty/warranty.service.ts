@@ -40,17 +40,26 @@ export class WarrantyService {
   ) {
     const brandId = this.tenantContext.getTenant();
 
+    // Verify customer exists before writing any data
+    const customer = await this.tenantDb.customer.findUnique({
+      where: { id: customerId },
+      select: { email: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
     const purchaseDate = new Date(dto.purchaseDate);
     const warrantyExpiresAt = new Date(purchaseDate);
     warrantyExpiresAt.setMonth(warrantyExpiresAt.getMonth() + DEFAULT_WARRANTY_MONTHS);
 
-    let invoiceImageUrl: string | undefined;
+    // Only store publicId — secureUrl for authenticated assets must be generated
+    // on-demand via signUrl() to avoid exposing a permanent bypass URL.
     let invoicePublicId: string | undefined;
 
     if (invoiceBuffer) {
       const id = `${customerId}-${Date.now()}`;
       const result = await this.cloudinary.uploadPrivate(invoiceBuffer, brandId, 'warranty', id);
-      invoiceImageUrl = result.secureUrl;
       invoicePublicId = result.publicId;
     }
 
@@ -62,34 +71,26 @@ export class WarrantyService {
         purchaseDate,
         platform: dto.platform,
         shopOrderId: dto.shopOrderId,
-        invoiceImageUrl,
         invoicePublicId,
         warrantyExpiresAt,
         status: 'active',
       },
     });
 
-    const customer = await this.tenantDb.customer.findUnique({
-      where: { id: customerId },
-      select: { email: true },
-    });
+    void this.mail
+      .sendWarrantyConfirmation(customer.email, locale, brandId, {
+        productSku: dto.productSku,
+        serialNumber: dto.serialNumber,
+        purchaseDate: purchaseDate.toISOString(),
+        warrantyExpiresAt: warrantyExpiresAt.toISOString(),
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(`Warranty confirmation email failed: ${String(err)}`),
+      );
 
-    if (customer) {
-      void this.mail
-        .sendWarrantyConfirmation(customer.email, locale, brandId, {
-          productSku: dto.productSku,
-          serialNumber: dto.serialNumber,
-          purchaseDate: purchaseDate.toLocaleDateString(),
-          warrantyExpiresAt: warrantyExpiresAt.toLocaleDateString(),
-        })
-        .catch((err: unknown) =>
-          this.logger.warn(`Warranty confirmation email failed: ${String(err)}`),
-        );
-
-      if (this.reminderQueue) {
-        const delay = warrantyExpiresAt.getTime() - Date.now() - 30 * 24 * 3600 * 1000;
-        const jobDelay = Math.max(0, delay);
-
+    if (this.reminderQueue) {
+      const delay = warrantyExpiresAt.getTime() - Date.now() - 30 * 24 * 3600 * 1000;
+      if (delay > 0) {
         await this.reminderQueue.add(
           'send-reminder',
           {
@@ -99,9 +100,9 @@ export class WarrantyService {
             locale,
             brandId,
             productSku: dto.productSku,
-            warrantyExpiresAt: warrantyExpiresAt.toLocaleDateString(),
+            warrantyExpiresAt: warrantyExpiresAt.toISOString(),
           },
-          { delay: jobDelay },
+          { delay, jobId: `warranty-reminder:${warranty.id}` },
         );
       }
     }

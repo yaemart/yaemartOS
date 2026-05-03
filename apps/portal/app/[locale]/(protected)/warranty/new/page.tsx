@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { registerWarranty } from '../../../../../lib/api/customer-api-client';
 
@@ -12,9 +12,15 @@ interface WarrantyNewPageProps {
   params: Promise<{ locale: string }>;
 }
 
-export default function WarrantyNewPage({ params: _params }: WarrantyNewPageProps) {
+export default function WarrantyNewPage({ params }: WarrantyNewPageProps) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [locale, setLocale] = useState('en');
+
+  // Resolve route locale for email template selection
+  useEffect(() => {
+    params.then(({ locale: l }) => setLocale(l));
+  }, [params]);
 
   const [productSku, setProductSku] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -76,7 +82,7 @@ export default function WarrantyNewPage({ params: _params }: WarrantyNewPageProp
           formData.append('invoiceFile', file);
         }
 
-        const result = await registerWarranty(formData, 'en', accessToken);
+        const result = await registerWarranty(formData, locale, accessToken);
 
         router.push(`/warranty/success?expires=${encodeURIComponent(result.warrantyExpiresAt)}`);
       } catch (err: unknown) {
@@ -89,7 +95,7 @@ export default function WarrantyNewPage({ params: _params }: WarrantyNewPageProp
         setSubmitting(false);
       }
     },
-    [agreed, productSku, serialNumber, purchaseDate, platform, shopOrderId, router],
+    [agreed, locale, productSku, serialNumber, purchaseDate, platform, shopOrderId, router],
   );
 
   return (

@@ -1,3 +1,5 @@
+import type { TenantSchema } from '@yaemartos/db';
+
 export const WARRANTY_REMINDER_QUEUE = 'warranty-reminder' as const;
 
 export interface WarrantyReminderJobPayload {
@@ -5,7 +7,7 @@ export interface WarrantyReminderJobPayload {
   customerId: string;
   email: string;
   locale: string;
-  brandId: string;
+  brandId: TenantSchema;
   productSku: string;
   warrantyExpiresAt: string;
 }

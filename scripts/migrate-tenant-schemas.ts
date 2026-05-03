@@ -74,8 +74,62 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
       id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       customer_id TEXT NOT NULL REFERENCES ${s}.customer(id) ON DELETE CASCADE,
       product_sku TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'registered',
-      registered_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      serial_number TEXT NOT NULL DEFAULT '',
+      purchase_date TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      platform TEXT,
+      shop_order_id TEXT,
+      invoice_image_url TEXT,
+      invoice_public_id TEXT,
+      warranty_expires_at TIMESTAMP(3),
+      reminder_sent_at TIMESTAMP(3),
+      status TEXT NOT NULL DEFAULT 'active',
+      registered_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Idempotent column additions for existing warranty_registration tables (re-run safe)
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS serial_number TEXT NOT NULL DEFAULT ''`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS purchase_date TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS platform TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS shop_order_id TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS invoice_image_url TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS invoice_public_id TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS warranty_expires_at TIMESTAMP(3)`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP(3)`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+  );
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.warranty_registration ALTER COLUMN status SET DEFAULT 'active'`,
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.product_manual (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      product_sku TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      public_id TEXT NOT NULL,
+      secure_url TEXT NOT NULL,
+      uploaded_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_sku, locale)
     )
   `);
 
@@ -85,10 +139,17 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
       customer_id TEXT,
       order_number TEXT NOT NULL,
       channel TEXT,
-      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(order_number)
+      ip_hash TEXT,
+      result_status TEXT,
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Idempotent column additions for existing order_lookup tables (re-run safe)
+  await pool.query(`ALTER TABLE IF EXISTS ${s}.order_lookup ADD COLUMN IF NOT EXISTS ip_hash TEXT`);
+  await pool.query(
+    `ALTER TABLE IF EXISTS ${s}.order_lookup ADD COLUMN IF NOT EXISTS result_status TEXT`,
+  );
 
   // Atomic sequence for ticket numbers — prevents TOCTOU races under concurrency
   await pool.query(`CREATE SEQUENCE IF NOT EXISTS ${s}.ticket_seq START WITH 1`);
@@ -179,6 +240,13 @@ async function migrateTenantSchema(pool: Pool, schema: string): Promise<void> {
     DROP TRIGGER IF EXISTS trg_ticket_updated_at ON ${s}.ticket;
     CREATE TRIGGER trg_ticket_updated_at
     BEFORE UPDATE ON ${s}.ticket
+    FOR EACH ROW EXECUTE FUNCTION ${s}.set_updated_at();
+  `);
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_warranty_updated_at ON ${s}.warranty_registration;
+    CREATE TRIGGER trg_warranty_updated_at
+    BEFORE UPDATE ON ${s}.warranty_registration
     FOR EACH ROW EXECUTE FUNCTION ${s}.set_updated_at();
   `);
 

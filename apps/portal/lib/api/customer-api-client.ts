@@ -234,6 +234,10 @@ export function getTickets(page = 1, accessToken?: string): Promise<TicketListRe
   });
 }
 
+export function listTickets(accessToken: string): Promise<Ticket[]> {
+  return getTickets(1, accessToken).then((r) => r.items);
+}
+
 export function getTicketMessages(
   ticketId: string,
   accessToken?: string,
@@ -356,7 +360,6 @@ export interface OrderLookupNotFound {
 
 export function lookupOrder(data: {
   orderNumber: string;
-  email: string;
   turnstileToken: string;
 }): Promise<OrderLookupResult | OrderLookupNotFound> {
   return request<OrderLookupResult | OrderLookupNotFound>('/customer/order-lookup', {

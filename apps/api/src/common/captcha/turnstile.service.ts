@@ -21,8 +21,11 @@ export class TurnstileService {
 
     const secretKey = this.config.get<string>('TURNSTILE_SECRET_KEY');
     if (!secretKey) {
-      this.logger.warn('TURNSTILE_SECRET_KEY not configured — skipping CAPTCHA verification');
-      return true;
+      this.logger.error(
+        'TURNSTILE_SECRET_KEY is not configured — CAPTCHA verification blocked. ' +
+          'Set TURNSTILE_SECRET_KEY to enable the order-lookup endpoint.',
+      );
+      return false;
     }
 
     try {

@@ -22,6 +22,6 @@ export class OrderLookupController {
       req.socket.remoteAddress ??
       'unknown';
 
-    return this.orderLookupService.lookup(dto.orderNumber, dto.email, dto.turnstileToken, ip);
+    return this.orderLookupService.lookup(dto.orderNumber, dto.turnstileToken, ip);
   }
 }
