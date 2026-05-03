@@ -169,7 +169,7 @@ export class ChatService implements OnModuleDestroy {
 
     const session = await this.tenantDb.chatSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, brandId: true },
+      select: { id: true, brandId: true, customerId: true },
     });
     if (!session || session.brandId !== brandId) {
       throw new NotFoundException(`Chat session ${sessionId} not found`);
@@ -192,12 +192,34 @@ export class ChatService implements OnModuleDestroy {
     const faqChunks = await this.faqKnowledge.search(content, brandId, locale, 5);
     const faqContext = faqChunks.map((c) => `Q: ${c.question}\nA: ${c.answer}`).join('\n\n');
 
-    const brandDisplayName = brandId.charAt(0).toUpperCase() + brandId.slice(1);
+    const [brandConfig, customerCtx] = await Promise.all([
+      this.tenantDb.systemConfig
+        .findFirst({ where: { key: 'brand.displayName' }, select: { value: true } })
+        .catch(() => null),
+      session.customerId
+        ? this.tenantDb.ticket
+            .count({
+              where: { customerId: session.customerId, status: { in: ['open', 'pending'] } },
+            })
+            .catch(() => 0)
+        : Promise.resolve(0),
+    ]);
+
+    const brandDisplayName =
+      (brandConfig?.value as string | undefined) ??
+      brandId.charAt(0).toUpperCase() + brandId.slice(1);
+
+    const customerSection = session.customerId
+      ? `Current customer ID: ${session.customerId}. Open/pending support tickets: ${customerCtx}.`
+      : 'Customer is browsing anonymously (not logged in).';
+
     const systemPrompt = [
       `You are a helpful customer support assistant for ${brandDisplayName}, a cross-border e-commerce brand.`,
       `Always respond in the language matching locale: ${locale}.`,
+      customerSection,
       `Your support scope: product questions, order status inquiries, warranty and returns, and general brand FAQs.`,
       `Out of scope (do not attempt): pricing negotiations, account modifications, legal disputes — for these, let the customer know you will connect them with a human agent.`,
+      `Escalation policy: if the customer has ${customerCtx > 0 ? 'open tickets, acknowledge them and offer to help or escalate' : 'no open tickets and you cannot help, offer to create a support ticket'}.`,
       faqContext
         ? `Relevant knowledge base entries:\n${faqContext}`
         : 'No matching knowledge base entries found for this query.',

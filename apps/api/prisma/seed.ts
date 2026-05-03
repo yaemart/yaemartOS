@@ -481,6 +481,33 @@ async function main() {
         value: 'true',
         label: '多语言 Listing 批量生成（EN/ES/FR）',
       },
+      // W36-W39: Customer Center V1 — manual, warranty, order lookup
+      // Global fallback entries ensure FeatureFlagGuard works on public routes
+      // where tenantId is not in CLS. Brand-scoped entries allow per-brand control.
+      { key: 'feature_flag.MANUAL_DOWNLOAD', value: 'true', label: '手册下载 (全局)' },
+      { key: 'feature_flag.MANUAL_DOWNLOAD.homtone', value: 'true', label: '手册下载 (Homtone)' },
+      {
+        key: 'feature_flag.MANUAL_DOWNLOAD.spoonlemon',
+        value: 'true',
+        label: '手册下载 (Spoonlemon)',
+      },
+      { key: 'feature_flag.WARRANTY_REGISTRATION', value: 'true', label: '保修注册 (全局)' },
+      {
+        key: 'feature_flag.WARRANTY_REGISTRATION.homtone',
+        value: 'true',
+        label: '保修注册 (Homtone)',
+      },
+      { key: 'feature_flag.ORDER_LOOKUP', value: 'true', label: '非登录订单查询 (全局)' },
+      {
+        key: 'feature_flag.ORDER_LOOKUP.homtone',
+        value: 'true',
+        label: '非登录订单查询 (Homtone)',
+      },
+      {
+        key: 'feature_flag.ORDER_LOOKUP.spoonlemon',
+        value: 'true',
+        label: '非登录订单查询 (Spoonlemon)',
+      },
     ];
     for (const flag of devFlags) {
       await prisma.systemConfig.upsert({

@@ -234,6 +234,10 @@ export function getTickets(page = 1, accessToken?: string): Promise<TicketListRe
   });
 }
 
+export function listTickets(accessToken: string): Promise<Ticket[]> {
+  return getTickets(1, accessToken).then((r) => r.items);
+}
+
 export function getTicketMessages(
   ticketId: string,
   accessToken?: string,
@@ -270,5 +274,96 @@ export function closeTicket(ticketId: string, accessToken: string): Promise<Tick
   return request<Ticket>(`/customer/tickets/${ticketId}/close`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+// ── Manuals ─────────────────────────────────────────────────────────────────
+
+export interface ManualItem {
+  productSku: string;
+  locale: string;
+  filename: string;
+  secureUrl: string;
+}
+
+export function listManuals(sku?: string): Promise<ManualItem[]> {
+  const query = sku ? `?sku=${encodeURIComponent(sku)}` : '';
+  return request<ManualItem[]>(`/customer/manuals${query}`);
+}
+
+export function getManual(sku: string, locale: string): Promise<ManualItem> {
+  return request<ManualItem>(
+    `/customer/manuals/${encodeURIComponent(sku)}/${encodeURIComponent(locale)}`,
+  );
+}
+
+// ── Warranties ──────────────────────────────────────────────────────────────
+
+export interface Warranty {
+  id: string;
+  productSku: string;
+  serialNumber: string;
+  purchaseDate: string;
+  platform?: string;
+  warrantyExpiresAt?: string;
+  status: string;
+  registeredAt: string;
+}
+
+export function listWarranties(accessToken: string): Promise<Warranty[]> {
+  return request<Warranty[]>('/customer/warranties', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function getWarranty(warrantyId: string, accessToken: string): Promise<Warranty> {
+  return request<Warranty>(`/customer/warranties/${warrantyId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function registerWarranty(
+  data: FormData,
+  locale: string,
+  accessToken: string,
+): Promise<{ id: string; warrantyExpiresAt: string; status: string }> {
+  const res = fetch(`${API_BASE}/customer/warranties?locale=${locale}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'x-yaemart-brand': BRAND,
+    },
+    body: data,
+  });
+  return res.then((r) => {
+    if (!r.ok) {
+      return r.json().then((e) => Promise.reject(e));
+    }
+    return r.json();
+  });
+}
+
+// ── Order Lookup ─────────────────────────────────────────────────────────────
+
+export interface OrderLookupResult {
+  found: true;
+  orderNumber: string;
+  status: string;
+  trackingNumber: string | null;
+  estimatedDelivery: string | null;
+}
+
+export interface OrderLookupNotFound {
+  found: false;
+  message: string;
+}
+
+export function lookupOrder(data: {
+  orderNumber: string;
+  turnstileToken: string;
+}): Promise<OrderLookupResult | OrderLookupNotFound> {
+  return request<OrderLookupResult | OrderLookupNotFound>('/customer/order-lookup', {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }

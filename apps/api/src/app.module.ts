@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { BullModule } from '@nestjs/bullmq';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LingxingClientModule } from '@yaemartos/lingxing-client';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
@@ -40,6 +42,23 @@ import { AdminModule } from './admin/admin.module';
         level: process.env.LOG_LEVEL ?? 'info',
       },
     }),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
+        const url = new URL(redisUrl);
+        return {
+          connection: {
+            host: url.hostname,
+            port: Number(url.port) || 6379,
+            password: url.password || undefined,
+            tls: url.protocol === 'rediss:' ? {} : undefined,
+          },
+        };
+      },
+    }),
     ClsModule.forRoot({
       global: true,
       middleware: { mount: true },
@@ -72,10 +91,8 @@ import { AdminModule } from './admin/admin.module';
     AdminModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: TenantGuard,
-    },
+    { provide: APP_GUARD, useClass: TenantGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

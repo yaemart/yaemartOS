@@ -67,23 +67,47 @@ model CustomerRefreshToken {
 }
 
 model WarrantyRegistration {
-  id           String   @id
-  customerId   String
-  productSku   String
-  status       String
-  registeredAt DateTime @default(now())
+  id                String    @id @default(cuid())
+  customerId        String
+  productSku        String
+  serialNumber      String
+  purchaseDate      DateTime
+  platform          String?
+  shopOrderId       String?
+  invoiceImageUrl   String?
+  invoicePublicId   String?
+  warrantyExpiresAt DateTime?
+  reminderSentAt    DateTime?
+  status            String    @default("active")
+  registeredAt      DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@schema("homtone")
 }
 
+model ProductManual {
+  id         String   @id @default(cuid())
+  productSku String
+  locale     String
+  filename   String
+  publicId   String
+  secureUrl  String
+  uploadedAt DateTime @default(now())
+
+  @@unique([productSku, locale])
+  @@schema("homtone")
+}
+
 model OrderLookup {
-  id          String   @id
-  customerId  String?
-  orderNumber String
-  channel     String?
-  createdAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  customerId   String?
+  orderNumber  String
+  channel      String?
+  ipHash       String?
+  resultStatus String?
+  createdAt    DateTime @default(now())
 
   @@schema("homtone")
 }
