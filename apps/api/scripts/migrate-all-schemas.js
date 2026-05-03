@@ -25,6 +25,49 @@ async function migrateTenant(client, schema) {
     )
   `);
 
+  // U3: add auth columns to customer if not present
+  await client.query(`
+    ALTER TABLE ${safeSchema}.customer
+      ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP(3),
+      ADD COLUMN IF NOT EXISTS name TEXT,
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ${safeSchema}.customer_email_verification (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL REFERENCES ${safeSchema}.customer(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ${safeSchema}.customer_password_reset (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL REFERENCES ${safeSchema}.customer(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP(3) NOT NULL,
+      used_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ${safeSchema}.customer_refresh_token (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL REFERENCES ${safeSchema}.customer(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP(3) NOT NULL,
+      revoked_at TIMESTAMP(3),
+      created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${safeSchema}.warranty_registration (
       id TEXT PRIMARY KEY,

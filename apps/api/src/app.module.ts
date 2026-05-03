@@ -20,6 +20,7 @@ import { SettingsModule } from './settings/settings.module';
 import { LocaleModule } from './locale/locale.module';
 import { TerminologyModule } from './terminology/terminology.module';
 import { MailModule } from './mail/mail.module';
+import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { MailModule } from './mail/mail.module';
     LocaleModule,
     TerminologyModule,
     MailModule,
+    CustomerPortalModule,
   ],
   providers: [
     {
