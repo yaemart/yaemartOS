@@ -264,6 +264,7 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-test-secret
           JWT_EXPIRES_IN: 15m
+          CUSTOMER_JWT_SECRET: ci-customer-jwt-secret
           GEMINI_API_KEY: mock-key-for-ci
           GEMINI_EMBED_MODEL: text-embedding-004
           LINGXING_APP_ID: mock-app-id
@@ -310,6 +311,7 @@ jobs:
           CLOUDINARY_API_SECRET: mock
           JWT_SECRET: ci-test-secret
           JWT_EXPIRES_IN: 15m
+          CUSTOMER_JWT_SECRET: ci-customer-jwt-secret
           LINGXING_APP_ID: mock-app-id
           LINGXING_APP_SECRET: mock-app-secret
           NEXTAUTH_SECRET: ci-e2e-nextauth-secret
