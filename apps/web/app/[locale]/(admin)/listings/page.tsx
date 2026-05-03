@@ -13,12 +13,34 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'archived', label: '已归档' },
 ];
 
+const LANGUAGE_FILTER_OPTIONS = [
+  { value: '', label: '全部' },
+  { value: 'en', label: 'EN' },
+  { value: 'es', label: 'ES' },
+  { value: 'fr', label: 'FR' },
+];
+
+function buildListingsHref(locale: string, status: string, language: string, page?: number) {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  if (language) {
+    params.set('language', language);
+  }
+  if (page && page > 1) {
+    params.set('page', String(page));
+  }
+  const qs = params.toString();
+  return `/${locale}/listings${qs ? `?${qs}` : ''}`;
+}
+
 export default async function ListingsPage({
   params,
   searchParams,
 }: {
   params: { locale: string };
-  searchParams?: { page?: string; status?: string };
+  searchParams?: { page?: string; status?: string; language?: string };
 }) {
   const guard = await requireAuth(params.locale);
   if (guard.status !== 'authenticated') {
@@ -27,6 +49,7 @@ export default async function ListingsPage({
 
   const page = searchParams?.page ? Number(searchParams.page) : 1;
   const status = searchParams?.status ?? '';
+  const language = searchParams?.language ?? '';
 
   const data = await listListings(
     guard.accessToken,
@@ -35,6 +58,7 @@ export default async function ListingsPage({
       pageSize: 20,
       brandId: guard.user.brandId,
       status: status || undefined,
+      language: language || undefined,
     },
     guard.user.brandId,
   );
@@ -49,16 +73,34 @@ export default async function ListingsPage({
       </div>
 
       {/* Status filter */}
-      <div className="mb-4 flex gap-2 flex-wrap">
+      <div className="mb-2 flex gap-2 flex-wrap">
         {STATUS_FILTER_OPTIONS.map((opt) => (
           <Link
             key={opt.value}
-            href={`/${params.locale}/listings${opt.value ? `?status=${opt.value}` : ''}`}
+            href={buildListingsHref(params.locale, opt.value, language)}
             className={[
               'rounded-full px-3 py-1 text-xs font-medium transition-colors',
               status === opt.value
                 ? 'bg-[rgb(var(--brand-primary))] text-white'
                 : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200',
+            ].join(' ')}
+          >
+            {opt.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Language filter */}
+      <div className="mb-4 flex gap-2 flex-wrap">
+        {LANGUAGE_FILTER_OPTIONS.map((opt) => (
+          <Link
+            key={opt.value}
+            href={buildListingsHref(params.locale, status, opt.value)}
+            className={[
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors border',
+              language === opt.value
+                ? 'border-[rgb(var(--brand-primary))] bg-[rgb(var(--brand-primary))]/10 text-[rgb(var(--brand-primary))]'
+                : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50',
             ].join(' ')}
           >
             {opt.label}
@@ -149,7 +191,7 @@ export default async function ListingsPage({
           <div className="flex gap-2">
             {page > 1 && (
               <Link
-                href={`/${params.locale}/listings?page=${page - 1}${status ? `&status=${status}` : ''}`}
+                href={buildListingsHref(params.locale, status, language, page - 1)}
                 className="rounded-md border px-3 py-1 hover:bg-zinc-50"
               >
                 上一页
@@ -157,7 +199,7 @@ export default async function ListingsPage({
             )}
             {page * 20 < data.total && (
               <Link
-                href={`/${params.locale}/listings?page=${page + 1}${status ? `&status=${status}` : ''}`}
+                href={buildListingsHref(params.locale, status, language, page + 1)}
                 className="rounded-md border px-3 py-1 hover:bg-zinc-50"
               >
                 下一页

@@ -74,6 +74,7 @@ export class ListingController {
     @Query('status') status?: string,
     @Query('shopId') shopId?: string,
     @Query('platformId') platformId?: string,
+    @Query('language') language?: string,
     @Req() req?: Request,
   ) {
     const brandId: string | undefined = (req as any)?.resolvedBrandId;
@@ -85,6 +86,7 @@ export class ListingController {
       status,
       shopId,
       platformId,
+      language,
     });
   }
 
