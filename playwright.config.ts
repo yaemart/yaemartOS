@@ -10,7 +10,7 @@ const isCI = !!process.env.CI;
  * to accommodate first-compilation warm-up.
  */
 const apiCommand = isCI
-  ? 'node apps/api/dist/src/main.js'
+  ? 'node apps/api/dist/main.js'
   : 'ulimit -n 4096; pnpm --filter @yaemartos/api exec prisma generate && pnpm --filter @yaemartos/api dev';
 
 const webCommand = isCI
