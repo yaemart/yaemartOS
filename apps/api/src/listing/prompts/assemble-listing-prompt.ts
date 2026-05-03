@@ -1,6 +1,7 @@
 import type { GenerateListingInput } from '@yaemartos/shared-types';
 import { AMAZON_EN_LIMITS } from '../rules/amazon-en-limits';
 import { getLocaleGuidelines, isNonEnglishLocale } from './locale-writing-guidelines';
+import { getBrandVoiceSection } from './brand-voice';
 
 /**
  * Assembles the user-turn prompt for Amazon listing generation.
@@ -16,25 +17,6 @@ export interface TermEntry {
   definition: string;
 }
 
-/**
- * Per-brand voice & tone guidelines injected into the prompt.
- * Static for S1/S2; will be sourced from DB (SystemConfig/BrandGuidelineService) in S3+.
- */
-const BRAND_VOICE: Record<string, string> = {
-  homtone:
-    'Brand voice: warm, approachable, and trustworthy. Write in a friendly, confident tone. ' +
-    'Emphasize ease of use, family-friendly design, and reliable performance. Avoid technical jargon.',
-  spoonlemon:
-    'Brand voice: playful, cheerful, and practical. Write with a light, upbeat tone. ' +
-    'Emphasize everyday convenience, clever design, and value for money. Use simple, vivid language.',
-  davivy:
-    'Brand voice: sophisticated, aspirational, and quality-focused. Write with a refined, confident tone. ' +
-    'Emphasize premium materials, craftsmanship, and lifestyle elevation. Avoid casual phrasing.',
-  tysun:
-    'Brand voice: energetic, adventurous, and performance-driven. Write with an active, bold tone. ' +
-    'Emphasize durability, outdoor performance, and an active lifestyle. Use action-oriented language.',
-};
-
 export function assembleAmazonEnPrompt(
   input: GenerateListingInput,
   terminology?: TermEntry[],
@@ -43,10 +25,7 @@ export function assembleAmazonEnPrompt(
   const langName = localeDisplayName(locale);
   const isNonEn = isNonEnglishLocale(locale as any);
 
-  const voiceGuide = BRAND_VOICE[input.brandId?.toLowerCase() ?? ''];
-  const brandVoiceSection = voiceGuide
-    ? `Brand Voice Guide:\n${voiceGuide}`
-    : `Brand: ${input.brandId} (no specific voice guide; write in a professional, benefit-focused tone).`;
+  const brandVoiceSection = getBrandVoiceSection(input.brandId);
 
   const terminologySection =
     terminology && terminology.length > 0

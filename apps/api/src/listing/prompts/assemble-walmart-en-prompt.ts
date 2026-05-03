@@ -2,6 +2,7 @@ import type { GenerateListingInput } from '@yaemartos/shared-types';
 import { WALMART_EN_LIMITS } from '../rules/walmart-en-limits';
 import { getLocaleGuidelines, isNonEnglishLocale } from './locale-writing-guidelines';
 import type { TermEntry } from './assemble-listing-prompt';
+import { getBrandVoiceSection } from './brand-voice';
 
 /**
  * Assembles the user-turn prompt for Walmart listing generation.
@@ -11,21 +12,6 @@ import type { TermEntry } from './assemble-listing-prompt';
  * Accepts an optional `terminology` array for brand vocabulary consistency.
  */
 
-const BRAND_VOICE: Record<string, string> = {
-  homtone:
-    'Brand voice: warm, approachable, and trustworthy. Friendly, confident tone. ' +
-    'Emphasize ease of use, family-friendly design, and reliability. Avoid technical jargon.',
-  spoonlemon:
-    'Brand voice: playful, cheerful, and practical. Light, upbeat tone. ' +
-    'Emphasize everyday convenience, clever design, and value for money.',
-  davivy:
-    'Brand voice: sophisticated, aspirational, quality-focused. Refined, confident tone. ' +
-    'Emphasize premium materials, craftsmanship, and lifestyle elevation.',
-  tysun:
-    'Brand voice: energetic, adventurous, performance-driven. Bold, active tone. ' +
-    'Emphasize durability, outdoor performance, and an active lifestyle.',
-};
-
 export function assembleWalmartEnPrompt(
   input: GenerateListingInput,
   terminology?: TermEntry[],
@@ -34,10 +20,7 @@ export function assembleWalmartEnPrompt(
   const langName = localeDisplayName(locale);
   const isNonEn = isNonEnglishLocale(locale as any);
 
-  const voiceGuide = BRAND_VOICE[input.brandId?.toLowerCase() ?? ''];
-  const brandVoiceSection = voiceGuide
-    ? `Brand Voice Guide:\n${voiceGuide}`
-    : `Brand: ${input.brandId} (no specific voice guide; write professionally and benefit-focused).`;
+  const brandVoiceSection = getBrandVoiceSection(input.brandId);
 
   const terminologySection =
     terminology && terminology.length > 0
