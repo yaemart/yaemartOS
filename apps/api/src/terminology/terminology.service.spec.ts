@@ -13,7 +13,8 @@ function makeService() {
       upsert: vi.fn(),
     },
   } as any;
-  return { service: new TerminologyService(prisma), prisma };
+  const prismaManager = { getPublicClient: () => prisma } as any;
+  return { service: new TerminologyService(prismaManager), prisma };
 }
 
 const BASE_DTO = {

@@ -14,7 +14,8 @@ function makeService(overrides?: Record<string, unknown>) {
     $transaction: vi.fn((fn: (tx: typeof prisma) => unknown) => fn(prisma)),
     ...overrides,
   } as any;
-  return { service: new LocaleService(prisma), prisma };
+  const prismaManager = { getPublicClient: () => prisma } as any;
+  return { service: new LocaleService(prismaManager), prisma };
 }
 
 describe('LocaleService', () => {
