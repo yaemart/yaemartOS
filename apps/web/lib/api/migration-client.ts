@@ -1,5 +1,12 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+export interface AvailableShop {
+  lingxingShopId: string;
+  shopName: string;
+  platformName: string;
+  marketName: string;
+}
+
 export type PathAPlatformCode = 'amazon' | 'walmart';
 export type PathAImportJobStatus = 'waiting' | 'active' | 'completed' | 'failed';
 
@@ -82,4 +89,24 @@ export async function listPathAImportJobs(token: string): Promise<JobListRespons
     throw new Error(`Failed to list jobs: ${res.status}`);
   }
   return res.json() as Promise<JobListResponse>;
+}
+
+export async function listAvailableShops(
+  token: string,
+  brandId: string,
+  platformCode: PathAPlatformCode,
+  signal?: AbortSignal,
+): Promise<AvailableShop[]> {
+  const params = new URLSearchParams({ platformCode });
+  const res = await fetch(`${API_BASE}/migration/path-a/shops?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'x-yaemart-brand': brandId,
+    },
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load available shops: ${res.status}`);
+  }
+  return res.json() as Promise<AvailableShop[]>;
 }

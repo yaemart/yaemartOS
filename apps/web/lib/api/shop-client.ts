@@ -2,24 +2,26 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export type ShopBinding = {
   id: string;
-  lingxingShopId: string;
+  lingxingShopId: string | null;
   syncEnabled: boolean;
   bindingToken: string | null;
-  boundAt: string;
+  createdAt: string;
 };
 
 export type ShopItem = {
   id: string;
   name: string;
   brandId: string;
-  platform: string;
+  platform: { name: string } | null;
+  market: { name: string } | null;
   binding: ShopBinding | null;
 };
 
 export type LingxingShop = {
-  id: string;
-  name: string;
-  platform: string;
+  shopId: string;
+  shopName: string;
+  marketplaceId: string;
+  isActive: boolean;
 };
 
 function authHeaders(accessToken: string, brand?: string): Record<string, string> {
@@ -60,6 +62,10 @@ export async function listShops(accessToken: string, brand?: string) {
   return request<ShopItem[]>('/shops', accessToken, { brand });
 }
 
+export async function getShop(accessToken: string, shopId: string, brand?: string) {
+  return request<ShopItem>(`/shops/${shopId}`, accessToken, { brand });
+}
+
 export async function listLingxingShops(accessToken: string, brand?: string) {
   return request<LingxingShop[]>('/shops/lingxing-available', accessToken, { brand });
 }
@@ -86,6 +92,14 @@ export async function toggleSync(
   return request<ShopBinding>(`/shops/${shopId}/binding`, accessToken, {
     method: 'PATCH',
     body: { syncEnabled },
+    brand,
+  });
+}
+
+export async function unbindShop(accessToken: string, shopId: string, brand?: string) {
+  return request<ShopBinding>(`/shops/${shopId}/binding`, accessToken, {
+    method: 'PATCH',
+    body: { unbind: true },
     brand,
   });
 }

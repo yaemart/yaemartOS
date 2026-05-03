@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { LingxingClient } from '@yaemartos/lingxing-client';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { BindShopDto } from './dto/bind-shop.dto';
+import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateBindingDto } from './dto/update-binding.dto';
 
 @Injectable()
@@ -20,7 +26,11 @@ export class ShopService {
   async list(brandId: string) {
     return this.prisma.shop.findMany({
       where: { brandId },
-      include: { binding: true },
+      include: {
+        binding: true,
+        platform: { select: { name: true } },
+        market: { select: { name: true } },
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -28,7 +38,11 @@ export class ShopService {
   async getById(id: string) {
     const shop = await this.prisma.shop.findUnique({
       where: { id },
-      include: { binding: true },
+      include: {
+        binding: true,
+        platform: { select: { name: true } },
+        market: { select: { name: true } },
+      },
     });
 
     if (!shop) {
@@ -40,6 +54,59 @@ export class ShopService {
 
   async getLingxingShops() {
     return this.lingxingClient.shops.list();
+  }
+
+  async create(dto: CreateShopDto, userId?: string) {
+    const existing = await this.prisma.shop.findFirst({
+      where: { platformId: dto.platformId, externalId: dto.externalId },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `A shop with externalId "${dto.externalId}" on platform "${dto.platformId}" already exists.`,
+      );
+    }
+
+    const shop = await this.prisma.shop.create({
+      data: {
+        name: dto.name,
+        platformId: dto.platformId,
+        marketId: dto.marketId,
+        brandId: dto.brandId,
+        externalId: dto.externalId,
+        isActive: dto.isActive ?? true,
+      },
+      include: {
+        binding: true,
+        platform: { select: { name: true } },
+        market: { select: { name: true } },
+      },
+    });
+
+    await this.auditService.logWrite({
+      userId,
+      tenant: undefined,
+      action: 'shop.create',
+      entity: 'Shop',
+      entityId: shop.id,
+      metadata: { name: dto.name, platformId: dto.platformId, brandId: dto.brandId },
+    });
+
+    return shop;
+  }
+
+  async delete(shopId: string, userId?: string) {
+    const shop = await this.assertShopExists(shopId);
+
+    await this.prisma.shop.delete({ where: { id: shopId } });
+
+    await this.auditService.logWrite({
+      userId,
+      tenant: undefined,
+      action: 'shop.delete',
+      entity: 'Shop',
+      entityId: shopId,
+      metadata: { name: shop.name, brandId: shop.brandId },
+    });
   }
 
   async bind(shopId: string, dto: BindShopDto, userId?: string) {
@@ -73,20 +140,29 @@ export class ShopService {
   }
 
   async updateBinding(shopId: string, dto: UpdateBindingDto, userId?: string) {
+    if (dto.unbind !== true && dto.syncEnabled === undefined) {
+      throw new BadRequestException('At least one of "unbind" or "syncEnabled" must be provided.');
+    }
+
     await this.assertShopExists(shopId);
+
+    const data =
+      dto.unbind === true
+        ? { lingxingShopId: null, syncEnabled: false }
+        : { syncEnabled: dto.syncEnabled };
 
     const binding = await this.prisma.shopBinding.update({
       where: { shopId },
-      data: { syncEnabled: dto.syncEnabled },
+      data,
     });
 
     await this.auditService.logWrite({
       userId,
       tenant: undefined,
-      action: 'shop.binding.update',
+      action: dto.unbind === true ? 'shop.binding.unbind' : 'shop.binding.update',
       entity: 'ShopBinding',
       entityId: binding.id,
-      metadata: { shopId, syncEnabled: dto.syncEnabled },
+      metadata: dto.unbind === true ? { shopId } : { shopId, syncEnabled: dto.syncEnabled },
     });
 
     return binding;

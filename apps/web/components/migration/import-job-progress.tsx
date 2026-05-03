@@ -38,6 +38,54 @@ const STATUS_CONFIG = {
   },
 } as const;
 
+const M07_THRESHOLD = 85;
+
+function QualityReport({ imported, failed }: { imported: number; failed: number }) {
+  const total = imported + failed;
+  if (total === 0) {
+    return <p className="mt-2 text-xs text-zinc-500">本次无数据导入。</p>;
+  }
+  const rate = Math.round((imported / total) * 100);
+  const passes = rate >= M07_THRESHOLD;
+
+  return (
+    <div className="mt-3 rounded-md border border-zinc-200 bg-white/60 p-3">
+      <p className="mb-2 text-xs font-semibold text-zinc-700">质量报告</p>
+      <div className="flex items-center gap-3">
+        <div className="relative h-12 w-12 flex-shrink-0">
+          <svg viewBox="0 0 36 36" className="h-12 w-12 -rotate-90">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="#e4e4e7" strokeWidth="4" />
+            <circle
+              cx="18"
+              cy="18"
+              r="14"
+              fill="none"
+              stroke={passes ? '#22c55e' : '#f59e0b'}
+              strokeWidth="4"
+              strokeDasharray={`${(rate / 100) * 87.96} 87.96`}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-zinc-700">
+            {rate}%
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 text-xs text-zinc-600">
+          <span>
+            成功 <strong className="text-green-700">{imported}</strong> / 失败{' '}
+            <strong className="text-red-600">{failed}</strong> / 共 {total}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 font-medium ${passes ? 'text-green-700' : 'text-amber-600'}`}
+          >
+            {passes ? '✓ 准确率达标 ≥ M-07 (85%)' : '⚠ 准确率未达 M-07 基线 (85%)'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ImportJobProgress({ jobId, token, onComplete }: ImportJobProgressProps) {
   const [job, setJob] = useState<PathAImportJobDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +157,11 @@ export function ImportJobProgress({ jobId, token, onComplete }: ImportJobProgres
         />
       </div>
 
-      {(job.imported != null || job.failed != null) && (
+      {job.status === 'completed' && job.imported != null && job.failed != null && (
+        <QualityReport imported={job.imported} failed={job.failed} />
+      )}
+
+      {job.status !== 'completed' && (job.imported != null || job.failed != null) && (
         <div className="flex gap-4 text-xs text-zinc-600">
           {job.imported != null && (
             <span>
