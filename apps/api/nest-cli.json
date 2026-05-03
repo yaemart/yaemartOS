@@ -3,7 +3,8 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
+    "tsConfigPath": "tsconfig.build.json",
     "deleteOutDir": true,
-    "assets": [{ "include": "generated/**/*", "outDir": "dist/src", "watchAssets": true }]
+    "assets": [{ "include": "generated/**/*", "outDir": "dist", "watchAssets": true }]
   }
 }
