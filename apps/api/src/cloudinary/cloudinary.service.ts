@@ -91,6 +91,46 @@ export class CloudinaryService {
   }
 
   /**
+   * Upload a public raw file preserving the original filename in the display name.
+   * Intended for product manuals that customers can directly download.
+   */
+  uploadPublicRaw(
+    buffer: Buffer,
+    brand: string,
+    assetType: string,
+    identifier: string,
+    filename: string,
+  ): Promise<CloudinaryUploadResult> {
+    const env = this.config.get<string>('NODE_ENV') ?? 'development';
+    const folder = `${env}/${brand}/${assetType}`;
+    const publicId = `${folder}/${identifier}`;
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          public_id: publicId,
+          resource_type: 'raw',
+          access_mode: 'public',
+          context: `filename=${filename}`,
+          overwrite: true,
+        },
+        (err, result) => {
+          if (err || !result) {
+            reject(err ?? new Error('Cloudinary raw upload failed'));
+            return;
+          }
+          resolve({ publicId: result.public_id, secureUrl: result.secure_url });
+        },
+      );
+      stream.end(buffer);
+    });
+  }
+
+  /** Delete a raw asset by publicId. Resolves silently if not found. */
+  async deleteRaw(publicId: string): Promise<void> {
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+  }
+
+  /**
    * Generate a signed time-limited URL for an authenticated asset.
    * @param publicId  Cloudinary public_id returned by uploadPrivate()
    * @param ttlSec    URL lifetime in seconds (default: 7 days)
