@@ -101,6 +101,7 @@ export async function listListings(
     productId?: string;
     brandId?: string;
     status?: string;
+    language?: string;
   } = {},
   brand?: string,
 ) {
@@ -119,6 +120,9 @@ export async function listListings(
   }
   if (params.status) {
     query.set('status', params.status);
+  }
+  if (params.language) {
+    query.set('language', params.language);
   }
   return request<Paged<ListingItem>>(
     `/listings${query.toString() ? `?${query.toString()}` : ''}`,

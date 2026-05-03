@@ -20,6 +20,7 @@ function makeController(overrides?: {
 
   const versionService = {
     createVersion: vi.fn().mockResolvedValue({ id: 'v1', versionNumber: 1 }),
+    createDraftVersion: vi.fn().mockResolvedValue({ id: 'v1', versionNumber: 1 }),
     listVersions: vi.fn().mockResolvedValue([]),
     activateVersion: vi.fn(),
   } as any;
@@ -189,5 +190,30 @@ describe('ListingController.batchGenerate', () => {
         user: { role: 'operator' },
       } as any),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('returns partial results when some combos fail and some succeed', async () => {
+    let callCount = 0;
+    const { controller } = makeController({
+      generateListing: vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount % 2 === 0) {
+          throw new Error('LLM timeout');
+        }
+        return { title: 'Test', bullets: [], description: '', searchTerms: [] };
+      }),
+    });
+    const result = await controller.batchGenerate(
+      {
+        ...BASE_BODY,
+        languages: ['en', 'es'],
+        targets: [{ shopId: 'shop1', platformCode: 'amazon', platformListingId: 'ASIN1' }],
+      },
+      { user: { role: 'operator', brandId: 'homtone' } } as any,
+    );
+    expect(result.results).toHaveLength(2);
+    const statuses = result.results.map((r) => r.status);
+    expect(statuses).toContain('completed');
+    expect(statuses).toContain('failed');
   });
 });

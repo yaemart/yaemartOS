@@ -4,8 +4,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ChevronDown, Languages, Save } from 'lucide-react';
-import type { ListingItem, ListingVersionItem, LocaleInfo } from '@/lib/api/listing-client';
+import type {
+  BatchGenerateResult,
+  ListingItem,
+  ListingVersionItem,
+  LocaleInfo,
+} from '@/lib/api/listing-client';
 import { batchGenerateMultilingual, generateListingDraft } from '@/lib/api/listing-client';
+import { getKeywordSuggestions, getListingSummaryMcp } from '@/lib/api/ai-mcp-client';
 import type { ListingVersion } from '@/lib/mock-data';
 import { LocaleSwitcher } from './locale-switcher';
 import { VersionTimeline } from './version-timeline';
@@ -72,6 +78,10 @@ export function ListingEditorShell({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isMultilingualGenerating, setIsMultilingualGenerating] = useState(false);
+  const [multilingualResult, setMultilingualResult] = useState<{
+    succeeded: number;
+    failed: Array<{ language: string; platformCode: string; error?: string }>;
+  } | null>(null);
 
   function handleLocaleSwitch(targetLocale: string) {
     const sibling = siblingListings.find((s) => s.language === targetLocale);
@@ -138,8 +148,9 @@ export function ListingEditorShell({
     }
 
     setIsMultilingualGenerating(true);
+    setMultilingualResult(null);
     try {
-      await batchGenerateMultilingual(
+      const response = await batchGenerateMultilingual(
         accessToken,
         {
           productId: listing.productId,
@@ -158,10 +169,22 @@ export function ListingEditorShell({
         },
         brandId,
       );
-      router.refresh();
+      const results: BatchGenerateResult[] = response.results ?? [];
+      const succeeded = results.filter((r) => r.status === 'completed').length;
+      const failed = results
+        .filter((r) => r.status === 'failed')
+        .map((r) => ({ language: r.language, platformCode: r.platformCode, error: r.error }));
+      setMultilingualResult({ succeeded, failed });
+      // Refresh whenever at least one version was written to the DB, regardless of partial failures.
+      if (succeeded > 0) {
+        router.refresh();
+      }
     } catch (err) {
       console.error('Multilingual generation failed:', err);
-      alert('多语言生成失败，请检查 API Key 配置');
+      setMultilingualResult({
+        succeeded: 0,
+        failed: [{ language: '—', platformCode: '—', error: '请求失败，请检查 API Key 配置' }],
+      });
     } finally {
       setIsMultilingualGenerating(false);
     }
@@ -226,6 +249,67 @@ export function ListingEditorShell({
         />
       )}
 
+      {/* Multilingual batch generation result panel */}
+      {multilingualResult !== null && (
+        <div
+          className={[
+            'shrink-0 border-b px-4 py-2 text-sm flex items-start gap-3',
+            multilingualResult.failed.length === 0
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : multilingualResult.succeeded > 0
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-red-50 border-red-200 text-red-800',
+          ].join(' ')}
+        >
+          <div className="flex-1 space-y-0.5">
+            <p className="font-medium">
+              {multilingualResult.failed.length === 0
+                ? `✓ 全部 ${multilingualResult.succeeded} 个语言生成成功`
+                : multilingualResult.succeeded > 0
+                  ? `⚠ 部分成功：${multilingualResult.succeeded} 成功 / ${multilingualResult.failed.length} 失败`
+                  : `✗ 生成失败（${multilingualResult.failed.length} 个）`}
+            </p>
+            {multilingualResult.failed.length > 0 && (
+              <ul className="mt-1 space-y-0.5 text-xs opacity-80">
+                {multilingualResult.failed.map((f, i) => (
+                  <li key={i}>
+                    [{f.language.toUpperCase()} / {f.platformCode}] {f.error ?? '未知错误'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {multilingualResult.failed.length > 0 && (
+              <button
+                onClick={startMultilingualGeneration}
+                disabled={isMultilingualGenerating}
+                className="rounded px-2 py-0.5 text-xs font-medium border hover:bg-white/50 transition-colors disabled:opacity-50"
+              >
+                重试
+              </button>
+            )}
+            {multilingualResult.succeeded > 0 && (
+              <button
+                onClick={() => {
+                  router.refresh();
+                  setMultilingualResult(null);
+                }}
+                className="rounded px-2 py-0.5 text-xs font-medium border hover:bg-white/50 transition-colors"
+              >
+                刷新页面
+              </button>
+            )}
+            <button
+              onClick={() => setMultilingualResult(null)}
+              className="text-xs opacity-60 hover:opacity-100 transition-opacity"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Three-column layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Version Timeline */}
@@ -278,6 +362,33 @@ export function ListingEditorShell({
             currentVersion={selectedVersion ?? uiVersions[0]}
             onGenerate={startGeneration}
             disabled={isGenerating}
+            onKeywordSuggestions={
+              listing.shopId
+                ? async () => {
+                    const result = await getKeywordSuggestions(
+                      accessToken,
+                      {
+                        shopId: listing.shopId,
+                        asin: listing.platformListingId ?? undefined,
+                      },
+                      brandId,
+                    );
+                    return result.keywords;
+                  }
+                : undefined
+            }
+            onListingSummary={
+              listing.shopId && listing.platformListingId
+                ? async () => {
+                    const result = await getListingSummaryMcp(
+                      accessToken,
+                      { shopId: listing.shopId, asin: listing.platformListingId! },
+                      brandId,
+                    );
+                    return { title: result.title, bullets: result.bullets };
+                  }
+                : undefined
+            }
           />
         </aside>
       </div>

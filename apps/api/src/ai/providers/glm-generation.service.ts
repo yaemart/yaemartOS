@@ -20,10 +20,62 @@ export class GlmGenerationService {
   }
 
   async generateText(prompt: string): Promise<string> {
+    return this.chat([{ role: 'user', content: prompt }]);
+  }
+
+  /**
+   * Calls GLM with `response_format: { type: 'json_object' }` and returns the
+   * parsed JSON. The caller is responsible for validating the schema.
+   */
+  async generateJson<T = unknown>(systemPrompt: string, userPrompt: string): Promise<T> {
+    const apiKey = this.config.get<string>('ZHIPU_API_KEY');
+    if (!apiKey) {
+      this.logger.warn('ZHIPU_API_KEY missing — returning mock JSON response');
+      return {} as T;
+    }
+
+    const modelId = this.config.get<string>('GLM_MODEL') ?? 'glm-4-flash';
+    const ac = new AbortController();
+    const timeoutHandle = setTimeout(() => ac.abort(), 30_000);
+
+    let res: globalThis.Response;
+    try {
+      res = await fetch(`${GLM_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.5,
+          response_format: { type: 'json_object' },
+        }),
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`GLM API error ${res.status}: ${body}`);
+    }
+
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
+    const raw = data.choices[0]?.message?.content?.trim() ?? '{}';
+    return JSON.parse(raw) as T;
+  }
+
+  private async chat(messages: { role: string; content: string }[]): Promise<string> {
     const apiKey = this.config.get<string>('ZHIPU_API_KEY');
     if (!apiKey) {
       this.logger.warn('ZHIPU_API_KEY missing — returning mock generateText response');
-      return `Mock GLM response for: ${prompt}`;
+      return `Mock GLM response`;
     }
 
     const modelId = this.config.get<string>('GLM_MODEL') ?? 'glm-4-flash';
@@ -40,11 +92,7 @@ export class GlmGenerationService {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-        }),
+        body: JSON.stringify({ model: modelId, messages, temperature: 0.7 }),
         signal: ac.signal,
       });
     } finally {
@@ -56,10 +104,7 @@ export class GlmGenerationService {
       throw new Error(`GLM API error ${res.status}: ${body}`);
     }
 
-    const data = (await res.json()) as {
-      choices: { message: { content: string } }[];
-    };
-
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
     return data.choices[0]?.message?.content?.trim() ?? '';
   }
 }

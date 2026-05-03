@@ -18,7 +18,11 @@ import { ShopModule } from './shop/shop.module';
 import { MigrationModule } from './migration/migration.module';
 import { SettingsModule } from './settings/settings.module';
 import { LocaleModule } from './locale/locale.module';
+import { MarketModule } from './market/market.module';
+import { PlatformModule } from './platform/platform.module';
 import { TerminologyModule } from './terminology/terminology.module';
+import { MailModule } from './mail/mail.module';
+import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 
 @Module({
   imports: [
@@ -59,7 +63,11 @@ import { TerminologyModule } from './terminology/terminology.module';
     MigrationModule,
     SettingsModule,
     LocaleModule,
+    MarketModule,
+    PlatformModule,
     TerminologyModule,
+    MailModule,
+    CustomerPortalModule,
   ],
   providers: [
     {

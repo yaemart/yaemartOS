@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate:all-tenants": "node ./scripts/migrate-all-schemas.js",
-    "check:env:s2": "tsx scripts/ops/check-s2-env.ts"
+    "check:env:s2": "tsx scripts/ops/check-s2-env.ts",
+    "migrate:tenant": "tsx ../../scripts/migrate-tenant-schemas.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
@@ -24,12 +25,14 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/throttler": "^6.5.0",
     "@opensearch-project/opensearch": "^3.6.0",
     "@prisma/adapter-neon": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@sentry/nestjs": "^8.53.0",
     "@sentry/profiling-node": "^8.53.0",
+    "@types/nodemailer": "^8.0.0",
     "@yaemartos/db": "workspace:*",
     "@yaemartos/lingxing-client": "workspace:*",
     "@yaemartos/shared-types": "workspace:*",
@@ -44,6 +47,7 @@
     "multer": "^1.4.5-lts.2",
     "nestjs-cls": "^5.3.0",
     "nestjs-pino": "^4.3.0",
+    "nodemailer": "^8.0.7",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",

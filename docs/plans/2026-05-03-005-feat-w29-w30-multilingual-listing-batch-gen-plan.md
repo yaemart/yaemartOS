@@ -1,63 +1,73 @@
 ---
-title: 'feat: W29–W30 多语言 Listing 批量生成 + 前端语言切换'
+title: 'feat: W29–W30 多语言批量生成收尾 + Listing 语言过滤'
 type: feat
 status: active
 date: 2026-05-03
 origin: docs/plans/2026-05-03-004-feat-w27-w28-locale-model-multilang-strategy-plan.md
 ---
 
-# feat: W29–W30 多语言 Listing 批量生成 + 前端语言切换
+# feat: W29–W30 多语言批量生成收尾 + Listing 语言过滤
 
 ## Overview
 
-在 W27–W28 建立的 Locale 数据模型和多语言 Prompt 策略基础上，实现
-EN/ES/FR × Amazon/Walmart 6 版本并行批量生成（后端），以及前端语言切换器
+W27–W28 已完成了多语言核心基础设施：`Locale` 实体、`LocaleController`、
+`batch-generate` 的 `languages[]` 笛卡尔积、`LocaleSwitcher` 组件、前端
+`fetchMarketLocales`/`fetchSiblingListings`/`batchGenerateMultilingual` 函数
+以及编辑器内的多语言生成按钮。
 
-- Listing 编辑器多语言 Tab（前端）。完成后运营人员可在一次操作中为同一
-  产品生成所有语言版本，并通过语言 Tab 在编辑器内快速切换查看/编辑。
+W29–W30 目标是**完成闭环**：
+
+1. **`GET /listings` 语言过滤**：后端 + 前端列表页新增 `?language=` 过滤器，
+   让运营在生成 ES/FR 版本后能快速筛选查看
+2. **批量生成结果反馈**：当前编辑器静默刷新，需展示每个语言×平台的生成
+   结果（成功/失败计数），给运营明确的操作反馈
+3. **Dev env 文档补全**：`.env.local.example` 补充
+   `NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION=true`
+4. **集成测试**：6 版本（EN/ES/FR × Amazon/Walmart）批量生成路径的端到端覆盖
+
+W31–W33 客户中心 V1 门户依赖 W29–W30 的 `Locale` 基础设施稳定，本计划是 S3
+进入客户中心阶段前的最后收尾。
 
 ---
 
 ## Problem Frame
 
-现有 `POST /listings/batch-generate` 每次只接受单一 `language`，运营若要生成
-EN + ES + FR 三个语言版本需要调用三次。前端 listing 编辑器仅显示单语言版本
-列表，无法在同一界面横向比较或切换不同语言的 Listing。
+经 W27–W28 实施后，运营可以在 Listing 编辑器内点击"一键多语言生成"，后端
+并发生成 EN/ES/FR × Amazon/Walmart 最多 6 个版本。但有以下待完善项：
 
-W29-W30 目标：
-
-1. 后端支持 `languages: LocaleCode[]` 参数，一次调用生成所有语言组合，
-   并注入术语库
-2. 新增 `GET /locales?marketId=xxx` 端点，前端据此渲染可用语言 Tab
-3. 前端语言切换器 + listing 编辑器内嵌多语言 Tab，允许跨语言版本浏览
+1. **列表页无语言过滤**：Listing 列表（`/listings`）只支持按状态过滤，
+   不支持 `?language=es` 过滤，运营生成完 ES 版本后无法快速定位
+2. **结果无 UI 反馈**：`startMultilingualGeneration()` 成功后只做 `router.refresh()`，
+   若有个别语言失败（如 FR 版本 Gemini 超时），运营完全不知情
+3. **Env 文档缺口**：`.env.local.example` 未包含
+   `NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION`，新开发者本地启动后
+   多语言按钮永远不出现（因默认值 `false`）
+4. **测试覆盖**：6-combo 笛卡尔积路径无集成测试
 
 ---
 
 ## Requirements Trace
 
-- R1. `POST /listings/batch-generate` 接受 `languages: LocaleCode[]`（保留
-  `language` 字段向后兼容）；按 `languages × targets` 笛卡尔积并发生成
-- R2. 每个目标语言调用 `TerminologyService.findByBrandAndLocale(brandId, locale)`
-  并将术语表注入 prompt；术语查询失败时降级为空数组，不阻塞生成
-- R3. 新增 `GET /locales?marketId=xxx` 返回该市场激活的语言列表，供前端
-  语言切换器渲染 Tab
-- R4. Feature flag `MULTILINGUAL_LISTING_GENERATION`：关闭时只允许 EN 单语言
-  批量生成
-- R5. 前端 `LocaleSwitcher` 组件：按 `/locales` API 渲染语言 Tab；切换语言时
-  切换显示对应语言的 Listing 版本列表
-- R6. listing 编辑器页面新增"批量多语言生成"按钮，一键触发 3 语言 × 当前
-  platform 的生成，生成后自动刷新页面展示新版本
+- R1. `GET /listings` 支持 `?language=<LocaleCode>` 过滤（backend 服务层 + 控制器）
+- R2. 列表页新增语言过滤 Tab（全部 / EN / ES / FR），与现有状态过滤并列
+- R3. `startMultilingualGeneration()` 完成后展示每个语言+平台的生成结果摘要
+  （成功 N 条，失败 M 条；失败时显示原因）
+- R4. `.env.local.example` 补充 `NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION=true`
+- R5. `listing.controller.spec.ts` 覆盖 6-combo 笛卡尔积 + 部分失败场景
 
 ---
 
 ## Scope Boundaries
 
-- 不实现 W31+ 客户中心门户
-- 不实现 DE/IT 语言（LocaleCode 已存在，但不在 S3 激活范围内）
-- 语言切换器不实现实时 diff 视图（W34+ 可考虑）
-- `batch-generate` 的进度推送（SSE/WebSocket）不在本期：保持同步返回，
-  前端显示 spinner；超时问题留 W34+ 处理
-- 不修改 listing 编辑器的内容字段编辑功能（仅增加语言导航层）
+- 不在本计划实现实时生成进度（SSE/WebSocket）——保持同步响应 + spinner，推迟至 W34+
+- 不修改 `MULTILINGUAL_ENABLED` env var 向 capabilities prop 的重构（保留现有 env var 模式）
+- 不实现 DE/IT 语言过滤（`BATCH_LOCALES` 已含，但 S3 不激活 DE/IT）
+- 语言过滤不与状态过滤做交叉组合 URL（复杂度过高，`?language=es&status=draft` 留 S4+）
+
+### Deferred to Follow-Up Work
+
+- SSE 实时进度推送：W34 客户中心 AI Chat 阶段一并做 streaming 基础设施
+- `MULTILINGUAL_ENABLED` 改用 server capabilities prop：S4 统一 capabilities 重构时处理
 
 ---
 
@@ -65,39 +75,42 @@ W29-W30 目标：
 
 ### Relevant Code and Patterns
 
-- `apps/api/src/listing/listing.controller.ts` — `batchGenerate` 已有 `languages`
-  单值字段；改为数组即可扩展并发
-- `apps/api/src/listing/dto/batch-generate-listing.dto.ts` — 当前 `language: string`
-  需扩展为 `languages: LocaleCode[]`，保留 `language` 作 backward-compat alias
-- `apps/api/src/listing/listing.service.ts` — `findOrCreateDraft` 和
-  `resolvePlatformId` 已存在，无需修改
-- `apps/api/src/terminology/terminology.service.ts` — `findByBrandAndLocale`
-  已在 W27-W28 实现
-- `apps/api/src/locale/locale.service.ts` — `findActive(marketId)` 已实现，
-  需新增 `LocaleController` 暴露为 REST
-- `apps/web/components/listing/listing-editor-shell.tsx` — 现有编辑器 shell，
-  需在顶部添加语言 Tab 导航层
-- `apps/web/lib/api/listing-client.ts` — 需添加 `batchGenerateMultilingual`
-  和 `fetchMarketLocales`
+- `apps/api/src/listing/listing.service.ts` — `ListListingsQuery` type（L29–37）无
+  `language` 字段；`list()` 方法的 `where` 构造（L71–79）需追加 language 条件
+- `apps/api/src/listing/listing.controller.ts` — `@Get()` 端点（L91）已有
+  `status / shopId / platformId` 查询参数，`language` 同模式追加
+- `apps/web/app/[locale]/(admin)/listings/page.tsx` — 现有状态过滤 Tab（L8–15, L51–67）
+  是语言过滤的参考样式
+- `apps/web/components/listing/listing-editor-shell.tsx` — `startMultilingualGeneration()`
+  函数（约 L122–165）当前静默 `router.refresh()`，需接收并展示 API 返回的 results
+- `apps/web/components/listing/locale-switcher.tsx` — 已实现的语言 Tab 组件，
+  语言过滤 Tab 可复用相同视觉风格
+- `apps/api/src/listing/listing.controller.spec.ts` — 现有批量生成测试，需扩展
+  多语言 + 部分失败场景
 
 ### Institutional Learnings
 
-- W27-W28 的 `TerminologyService` 注入模式已验证（313 tests ✅）
-- `BatchGenerateListingDto` 的 `targets` 数组并发用 `Promise.allSettled`，
-  部分失败不中断整体；多语言版本沿用同一模式
+- **`Promise.allSettled` 部分失败模式**：batch-generate 已用此模式；前端结果
+  展示需对应处理 `status: 'failed'` 的 combo（参见 W24-W25 审计日志经验）
+- **状态过滤 URL 模式**：列表页已用 `?status=draft` query param + `<Link>`，
+  语言过滤沿用同一模式，不引入新状态管理库
+- **枚举过滤的 Prisma 模式**：`where: { status: query.status as ListingStatus }`——
+  language 使用同样的 `as LocaleCode` 类型断言
+
+### External References
+
+- 无需外部研究：本地模式充分（listing 过滤、状态 Tab、部分失败展示皆有现成参考）
 
 ---
 
 ## Key Technical Decisions
 
-- **笛卡尔积展开在 controller**：`languages × targets` 的组合由 controller
-  展开，service 层保持"一次生成一个版本"的职责不变
-- **backward-compat 字段**：保留 `language?: string` 作 deprecated 字段，
-  优先使用 `languages`；若两者都缺则 400
-- **LocaleController 新建**（不污染 LocaleModule 的 no-controller 设计）：
-  暴露 `GET /locales?marketId=xxx`，返回 `{ locales: { language, isPrimary }[] }`
-- **前端语言 Tab 基于 URL param**：`?locale=es` query param 控制当前显示语言；
-  切换时浏览器 push，不走 state（SEO 友好，刷新稳定）
+- **语言过滤 URL 参数名用 `language`（不用 `locale`）**：与 Listing 数据模型的
+  `language` 字段保持一致；避免与 Next.js App Router 的 `[locale]` segment 混淆
+- **语言过滤 Tab 静态枚举**：仅显示 `全部 / EN / ES / FR`（不动态拉 `/locales`
+  API），因为 S3 北美激活语言固定，动态化反而增加 waterfall 请求
+- **结果反馈用 inline alert**：不引入 toast 库，沿用现有 `alert()` 风格但改为
+  inline summary panel（`<div role="status">`），避免 A11y 问题和新依赖
 
 ---
 
@@ -105,170 +118,205 @@ W29-W30 目标：
 
 ### Resolved During Planning
 
-- **`TerminologyModule` 在 `ListingModule` 中的循环依赖风险**：
-  `ListingModule` 可直接 import `TerminologyModule`（后者只依赖 PrismaModule），
-  无循环
-- **并发上限**：目前 3 languages × 2 platforms = 6 calls，Gemini API
-  并发不超过 10，无需限流；若后续扩展到 DE/IT 再加 rate limiter
+- **语言过滤是否要支持多选**：否——单选下拉/Tab 足够，多选留 S4 高级筛选
+- **结果反馈是否需要持久化**：否——页面刷新后消失，运营可通过列表页语言过滤验证结果
 
 ### Deferred to Implementation
 
-- 单次批量生成总超时（3×2=6 次 LLM 调用）：实现时若 > 30s 需加 timeout 提示
+- 6 combo 并发时如果某个语言全部超时（>30s），前端 spinner 无超时提示——
+  实现时若发现响应时间超过 UI 可接受范围，临时加 30s `AbortController` 超时
 
 ---
 
 ## Implementation Units
 
-- [ ] U1. **后端：多语言批量生成 + 术语注入 + LocaleController**
+- [ ] U1. **后端：`GET /listings` 语言过滤**
 
-**Goal:** 将 `batch-generate` 端点升级为接受 `languages[]`，笛卡尔积并发生成，
-并注入 TerminologyService；同时新增 `GET /locales` 端点。
+**Goal:** 让列表端点支持 `?language=en` 过滤，运营可按语言维度筛选 Listing。
 
-**Requirements:** R1, R2, R3, R4
+**Requirements:** R1
 
-**Dependencies:** W27-W28 Locale/Terminology 已完成
+**Dependencies:** 无（`Locale` 模型在 W27-W28 已完成，listing 表已有 `language` 字段）
 
 **Files:**
 
-- Modify: `apps/api/src/listing/dto/batch-generate-listing.dto.ts`
+- Modify: `apps/api/src/listing/listing.service.ts`
 - Modify: `apps/api/src/listing/listing.controller.ts`
-- Modify: `apps/api/src/listing/listing.module.ts`
-- Create: `apps/api/src/locale/locale.controller.ts`
-- Modify: `apps/api/src/locale/locale.module.ts`
-- Modify: `apps/api/prisma/seed.ts` _(添加 MULTILINGUAL_LISTING_GENERATION flag)_
-- Test: `apps/api/src/listing/listing.controller.spec.ts` _(新建或扩展)_
+- Test: `apps/api/src/listing/listing.controller.spec.ts`
 
 **Approach:**
 
-- `BatchGenerateListingDto` 新增 `@IsArray() @IsIn(LOCALES, { each: true }) languages?: string[]`；
-  controller 取 `resolvedLanguages = body.languages ?? (body.language ? [body.language] : null)`；
-  若 null 则 400
-- Feature flag `MULTILINGUAL_LISTING_GENERATION`：关闭时 `resolvedLanguages` 强制截断为 `['en']`
-- 笛卡尔积：`resolvedLanguages.flatMap(lang => body.targets.map(t => ({ ...t, lang })))`
-- 每个 combo 调用 `TerminologyService.findByBrandAndLocale(body.brandId, lang)`；
-  catch 所有异常 → 空数组降级
-- `LocaleController`: `@Get() @UseGuards(JwtAuthGuard)` →
-  `localeService.findActive(marketId)` → `{ locales }`
+- `ListListingsQuery` 新增 `language?: string` 字段
+- `list()` 的 `where` 构造追加 `...(query.language ? { language: query.language as LocaleCode } : {})`
+- Controller `@Get()` 追加 `@Query('language') language?: string`，传入 `list()` 调用
+- 遵循现有 `status / shopId / platformId` 参数的完全相同模式
+
+**Patterns to follow:**
+
+- `apps/api/src/listing/listing.service.ts` L71–79 的 `where` 构造模式
+- `apps/api/src/listing/listing.controller.ts` `@Get()` 端点参数模式
 
 **Test scenarios:**
 
-- Happy path: `languages: ['en', 'es']` + 1 target → 2 结果，每个结果含 `language` 字段
-- Happy path: `languages: ['en', 'es', 'fr']` + 2 targets → 6 结果
-- Backward compat: 只传 `language: 'en'`（老字段）→ 生成 1 个版本
-- Error path: 两者都不传 → 400 BadRequest
-- Feature flag off: `languages: ['en', 'es']` → 只生成 `['en']` 1 版本
-- Integration: terminology 查询失败 → 降级空数组，生成不中断
-- `GET /locales?marketId=mkt_homtone_us` → 返回 3 条语言记录
+- Happy path: `?language=es` → 只返回 `language === 'es'` 的 listings
+- Happy path: `?language=en&brandId=xxx` → brandId + language 双重过滤生效
+- Edge case: 无 `language` 参数 → 返回全部语言（向后兼容）
+- Edge case: `?language=de`（未激活但合法的 LocaleCode）→ 返回空列表，无 400 错误
 
 **Verification:**
 
 - `listing.controller.spec.ts` 新增测试全绿
-- `POST /listings/batch-generate` with `languages: ['en','es','fr']` × 2 targets → 6 results
+- `GET /listings?language=es` 在集成环境只返回 ES 语言 listings
 
 ---
 
-- [ ] U2. **前端 API 层：`fetchMarketLocales` + `batchGenerateMultilingual`**
+- [ ] U2. **前端：Listing 列表页语言过滤 Tab**
 
-**Goal:** 在 `listing-client.ts` 中新增两个 API 函数，供 UI 组件调用。
+**Goal:** 在 Listing 列表页顶部新增语言过滤 Tab（全部 / EN / ES / FR），
+让运营在批量生成完成后能快速定位新生成的语言版本。
 
-**Requirements:** R3, R6
+**Requirements:** R2
 
 **Dependencies:** U1
 
 **Files:**
 
-- Modify: `apps/web/lib/api/listing-client.ts`
+- Modify: `apps/web/app/[locale]/(admin)/listings/page.tsx`
+- Modify: `apps/web/lib/api/listing-client.ts`（`listListings` 函数新增 `language` 参数）
 
 **Approach:**
 
-- `fetchMarketLocales(token, marketId)` → `GET /locales?marketId=xxx` → 返回
-  `{ language: string; isPrimary: boolean; label: string }[]`；
-  `label` 由 client side map（`en` → `EN`, `es` → `ES`, `fr` → `FR`）
-- `batchGenerateMultilingual(token, payload)` → `POST /listings/batch-generate`
-  with `languages` array；返回 `{ results: BatchResult[] }`
+- `listListings()` 函数新增可选 `language?: string` 参数，追加到查询字符串
+- 列表页读取 `searchParams.language` 并传入 `listListings()`
+- 新增语言过滤 Tab 区域（静态枚举 `['', 'en', 'es', 'fr']`，label `全部/EN/ES/FR`）
+- Tab 激活样式与现有状态 Tab 一致（`bg-[rgb(var(--brand-primary))]`）
+- Tab href 格式：`/${locale}/listings?language=es`（若同时有 status 则追加 `&status=draft`）
+
+**Patterns to follow:**
+
+- `apps/web/app/[locale]/(admin)/listings/page.tsx` L8–67 现有状态过滤 Tab 模式
 
 **Test scenarios:**
 
-- `fetchMarketLocales` 映射 label 正确（`en` → `EN`）
-- `batchGenerateMultilingual` 将 `languages` 数组正确传入 body
+- Happy path: 点击"ES" Tab → URL 变为 `?language=es`，列表只显示 ES 版本
+- Happy path: "全部" Tab 无 `language` 参数 → 显示所有语言
+- Edge case: 无 ES Listing 时显示空状态，不报错
+- Integration: 语言 Tab 与状态 Tab 的 href 不互相覆盖（已有 status 参数时语言 Tab 保留 status）
 
 **Verification:**
 
-- 函数类型安全（TypeScript 编译无报错）
+- 列表页顶部出现"全部 / EN / ES / FR"4 个语言 Tab
+- 点击 Tab 后列表按语言过滤，面包屑 URL 可书签收藏
 
 ---
 
-- [ ] U3. **前端 UI：`LocaleSwitcher` + listing 编辑器多语言 Tab**
+- [ ] U3. **前端：批量生成结果反馈**
 
-**Goal:** listing 编辑器页面顶部新增语言 Tab；切换语言导航至对应语言的
-Listing（同产品/同店/同平台、不同语言）；新增"批量多语言生成"按钮。
+**Goal:** `startMultilingualGeneration()` 完成后显示 inline 结果摘要，
+让运营明确知道哪些语言×平台版本生成成功或失败。
 
-**Requirements:** R5, R6
+**Requirements:** R3
 
-**Dependencies:** U2
+**Dependencies:** 无（纯前端，不依赖 U1/U2）
 
 **Files:**
 
-- Create: `apps/web/components/listing/locale-switcher.tsx`
-- Modify: `apps/web/app/[locale]/(admin)/listings/[id]/page.tsx`
 - Modify: `apps/web/components/listing/listing-editor-shell.tsx`
-- Modify: `apps/web/lib/api/listing-client.ts` _(添加 `fetchSiblingListings`)_
 
 **Approach:**
 
-- `LocaleSwitcher`: 接收 `locales[]` + `activeLocale` + `onSwitch(locale)` props；
-  渲染水平 Tab bar（复用 brand-switcher.tsx 的样式模式）；
-  激活 Tab 高亮 `border-brand-primary`
-- `fetchSiblingListings(token, listingId, brandId)` → `GET /listings?productId=&shopId=&platformId=`
-  过滤出同产品/店/平台的所有语言 Listing，返回 `{ id, language }[]`
-- listing 详情页（server component）：并行 fetch `fetchMarketLocales` +
-  `fetchSiblingListings`；将结果传入 `ListingEditorShell`
-- `ListingEditorShell`: 顶部渲染 `LocaleSwitcher`；切换时 `router.push` 到
-  对应语言 listing 的 `/listings/[siblingId]`；新增"批量多语言生成"按钮（触发
-  `batchGenerateMultilingual` 后 `router.refresh()`）
+- 新增 state `multilingualResult: { succeeded: number; failed: { language: string; platformCode: string; error: string }[] } | null`
+- `startMultilingualGeneration()` 捕获 API 返回的 `results` 数组，统计
+  `status === 'completed'` 和 `status === 'failed'` 数量
+- 结果展示：`<div role="status">` inline panel，绿色显示"✓ N 个版本生成成功"，
+  红色列出失败 combo（语言 + 平台 + 错误摘要）
+- Panel 关闭按钮或 5s 后自动清除（`setTimeout` 设 `multilingualResult = null`）
+- 结果展示后再调 `router.refresh()` 以加载新版本列表
+
+**Patterns to follow:**
+
+- `apps/web/components/listing/generating-overlay.tsx`（现有生成状态展示模式）
 
 **Test scenarios:**
 
-- `LocaleSwitcher` 渲染 3 个语言 Tab，激活 Tab 有高亮样式
-- `LocaleSwitcher` 点击非激活 Tab → `onSwitch` 被调用
-- "批量多语言生成"按钮存在且在生成期间显示加载状态
-- 无兄弟 listing 时语言 Tab 不显示（graceful fallback）
+- Happy path: 6 combos 全成功 → 显示"✓ 6 个版本生成成功"
+- Error path: 2 combos 失败 → 显示"✓ 4 个成功，✗ 2 个失败"+ 失败明细（语言/平台）
+- Edge case: API 整体抛出异常（网络错误）→ 显示通用错误，不崩溃
 
 **Verification:**
 
-- 编辑器页面顶部出现语言 Tab 区域（EN / ES / FR）
-- 切换语言 Tab 导航至对应语言版本的 Listing 编辑器
-- "批量多语言生成"按钮一键触发 3 语言生成并刷新页面
+- 多语言生成完成后编辑器顶部出现结果摘要 banner
+- 部分失败时 banner 列出失败语言和平台
+
+---
+
+- [ ] U4. **环境文档 + 集成测试**
+
+**Goal:** 补全 dev env 文档，并为 6-version 批量生成路径增加集成测试覆盖。
+
+**Requirements:** R4, R5
+
+**Dependencies:** U1
+
+**Files:**
+
+- Modify: `apps/web/.env.local.example`
+- Modify: `apps/api/src/listing/listing.controller.spec.ts`
+
+**Approach:**
+
+- `.env.local.example` 的"Feature Flags"章节补充
+  `NEXT_PUBLIC_FEATURE_MULTILINGUAL_LISTING_GENERATION=true`，并附注释说明其作用
+- `listing.controller.spec.ts` 新增测试组 `POST /listings/batch-generate (multilingual)`:
+  - 3 languages × 2 targets = 6 combos 全成功
+  - 1 个 combo 失败（mock `generateListing` 对 `fr` 抛异常）→ 其他 5 combos 成功，
+    response 中 `failed` combo status='failed' 且整体 HTTP 200
+  - Feature flag `MULTILINGUAL_LISTING_GENERATION` 关闭时 `languages: ['en','es']`
+    → 只生成 `en`，不生成 `es`
+
+**Test expectation (env file):** none — 文档变更，无行为测试
+
+**Test scenarios:**
+
+- 6-combo 全成功：`results.length === 6`，每个 `status === 'completed'`
+- 部分失败：1 combo `status === 'failed'`，其他 5 combos `status === 'completed'`，HTTP 200
+- Feature flag off：`resolvedLanguages` 被截断为 `['en']`，生成结果仅含 en combos
+- Backward compat：`language: 'en'`（旧字段）→ 生成 1 个版本，兼容性不破坏
+
+**Verification:**
+
+- CI 测试通过（`pnpm test` in `apps/api`）
+- 新开发者复制 `.env.local.example` 后多语言按钮可见（`MULTILINGUAL_ENABLED = true`）
 
 ---
 
 ## System-Wide Impact
 
-- **Interaction graph:** `listing.controller.ts` 新增 `TerminologyService` 依赖；
-  `LocaleModule` 新增 controller，暴露 `/locales` 端点
-- **Error propagation:** 术语查询失败静默降级；单个语言版本生成失败只影响该
-  combo 的 result，不影响其他语言（`Promise.allSettled`）
-- **State lifecycle risks:** 多语言并发生成可能出现 `findOrCreateDraft` 竞态
-  （同一 productId+shopId+language 被重复创建）；已有 `@@unique` 约束保护
-- **Unchanged invariants:** 单语言 `language` 字段保持 backward-compat，
-  现有 agent/API 调用不受影响
-- **API surface parity:** `GET /iam/capabilities` 的 `CAPABILITY_ACTIONS` 需
-  新增 `GET /locales` entry（update `iam.controller.ts`）
+- **Interaction graph:** `GET /listings` 新增 `language` 过滤参数；不影响现有
+  调用方（`fetchSiblingListings` 用 `productId+shopId+platformId` 组合，不传 language）
+- **Error propagation:** U3 结果面板吸收 API 部分失败（`Promise.allSettled`），
+  不向上传播；网络错误单独 catch 展示
+- **State lifecycle risks:** 无新状态写入——过滤是只读查询；结果 panel state 局限于
+  `listing-editor-shell` 组件内
+- **Unchanged invariants:** batch-generate 的笛卡尔积、术语注入、`@@unique` 约束
+  均不变；`fetchSiblingListings` 继续用 `productId+shopId+platformId` 过滤
 
 ---
 
 ## Risks & Dependencies
 
-| Risk                                    | Mitigation                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| 3×2=6 LLM 并发调用超时（> 30s）         | 前端 spinner + 30s 超时提示；W34 加 SSE 进度流                                        |
-| 兄弟 listing 查询逻辑复杂（无直接 API） | 用 `GET /listings?productId&shopId&platformId` 过滤；若字段不存在则先添加 query param |
+| Risk                                                | Mitigation                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| 语言过滤 URL 参数与 Next.js `[locale]` segment 歧义 | 参数名用 `language`（非 `locale`），路由层无冲突                        |
+| 6 LLM 并发调用超时导致结果面板卡死                  | U3 实现时添加 30s `AbortController` 超时；面板显示超时错误；不阻塞 W31+ |
+| `.env.local.example` 更新未同步给所有开发者         | PR 描述明确提示需重新复制 `.env.local.example`                          |
 
 ---
 
 ## Sources & References
 
-- 实施方案: `docs/yaemartOS-implementation-plan.md` §8 W29–W30
-- 依赖计划: `docs/plans/2026-05-03-004-feat-w27-w28-locale-model-multilang-strategy-plan.md`
-- 现有 batch-generate: `apps/api/src/listing/listing.controller.ts`
+- **Origin document:** `docs/plans/2026-05-03-004-feat-w27-w28-locale-model-multilang-strategy-plan.md`
+- 实施方案 §8 W29–W30: `docs/yaemartOS-implementation-plan.md`
+- 现有 batch-generate: `apps/api/src/listing/listing.controller.ts`（L116–240）
 - 现有编辑器 shell: `apps/web/components/listing/listing-editor-shell.tsx`
+- 现有状态过滤参考: `apps/web/app/[locale]/(admin)/listings/page.tsx`

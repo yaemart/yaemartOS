@@ -34,6 +34,7 @@ type ListListingsQuery = {
   status?: string;
   shopId?: string;
   platformId?: string;
+  language?: string;
 };
 
 /**
@@ -71,6 +72,7 @@ export class ListingService {
       ...(query.status ? { status: query.status as ListingStatus } : {}),
       ...(query.shopId ? { shopId: query.shopId } : {}),
       ...(query.platformId ? { platformId: query.platformId } : {}),
+      ...(query.language ? { language: query.language as any } : {}),
     };
 
     const [data, total] = await Promise.all([

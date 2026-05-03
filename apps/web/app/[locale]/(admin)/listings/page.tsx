@@ -13,12 +13,34 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'archived', label: '已归档' },
 ];
 
+const LANGUAGE_FILTER_OPTIONS = [
+  { value: '', label: '全部' },
+  { value: 'en', label: 'EN' },
+  { value: 'es', label: 'ES' },
+  { value: 'fr', label: 'FR' },
+];
+
+function buildListingsHref(locale: string, status: string, language: string, page?: number) {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  if (language) {
+    params.set('language', language);
+  }
+  if (page && page > 1) {
+    params.set('page', String(page));
+  }
+  const qs = params.toString();
+  return `/${locale}/listings${qs ? `?${qs}` : ''}`;
+}
+
 export default async function ListingsPage({
   params,
   searchParams,
 }: {
   params: { locale: string };
-  searchParams?: { page?: string; status?: string };
+  searchParams?: { page?: string; status?: string; language?: string };
 }) {
   const guard = await requireAuth(params.locale);
   if (guard.status !== 'authenticated') {
@@ -27,6 +49,7 @@ export default async function ListingsPage({
 
   const page = searchParams?.page ? Number(searchParams.page) : 1;
   const status = searchParams?.status ?? '';
+  const language = searchParams?.language ?? '';
 
   const data = await listListings(
     guard.accessToken,
@@ -35,6 +58,7 @@ export default async function ListingsPage({
       pageSize: 20,
       brandId: guard.user.brandId,
       status: status || undefined,
+      language: language || undefined,
     },
     guard.user.brandId,
   );
@@ -49,11 +73,11 @@ export default async function ListingsPage({
       </div>
 
       {/* Status filter */}
-      <div className="mb-4 flex gap-2 flex-wrap">
+      <div className="mb-2 flex gap-2 flex-wrap">
         {STATUS_FILTER_OPTIONS.map((opt) => (
           <Link
             key={opt.value}
-            href={`/${params.locale}/listings${opt.value ? `?status=${opt.value}` : ''}`}
+            href={buildListingsHref(params.locale, opt.value, language)}
             className={[
               'rounded-full px-3 py-1 text-xs font-medium transition-colors',
               status === opt.value
@@ -66,10 +90,45 @@ export default async function ListingsPage({
         ))}
       </div>
 
+      {/* Language filter */}
+      <div className="mb-4 flex gap-2 flex-wrap">
+        {LANGUAGE_FILTER_OPTIONS.map((opt) => (
+          <Link
+            key={opt.value}
+            href={buildListingsHref(params.locale, status, opt.value)}
+            className={[
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors border',
+              language === opt.value
+                ? 'border-[rgb(var(--brand-primary))] bg-[rgb(var(--brand-primary))]/10 text-[rgb(var(--brand-primary))]'
+                : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50',
+            ].join(' ')}
+          >
+            {opt.label}
+          </Link>
+        ))}
+      </div>
+
       {/* Listing table */}
       {data.data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-200 py-16 text-center">
-          <p className="text-sm text-zinc-500">暂无 Listing 数据</p>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-200 py-16 text-center gap-3">
+          <svg
+            className="h-10 w-10 text-zinc-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <p className="text-sm font-medium text-zinc-500">暂无 Listing 数据</p>
+          <p className="max-w-xs text-xs text-zinc-400 leading-relaxed">
+            从商品详情页进入编辑器，点击「AI 生成草稿」即可自动创建第一条 Listing。 AI 仅生成{' '}
+            <strong>Draft</strong> 版本，需手动激活后才会发布。
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-zinc-200">
@@ -149,7 +208,7 @@ export default async function ListingsPage({
           <div className="flex gap-2">
             {page > 1 && (
               <Link
-                href={`/${params.locale}/listings?page=${page - 1}${status ? `&status=${status}` : ''}`}
+                href={buildListingsHref(params.locale, status, language, page - 1)}
                 className="rounded-md border px-3 py-1 hover:bg-zinc-50"
               >
                 上一页
@@ -157,7 +216,7 @@ export default async function ListingsPage({
             )}
             {page * 20 < data.total && (
               <Link
-                href={`/${params.locale}/listings?page=${page + 1}${status ? `&status=${status}` : ''}`}
+                href={buildListingsHref(params.locale, status, language, page + 1)}
                 className="rounded-md border px-3 py-1 hover:bg-zinc-50"
               >
                 下一页

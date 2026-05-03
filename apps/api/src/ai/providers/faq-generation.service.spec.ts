@@ -4,18 +4,26 @@ import { FaqGenerationService } from './faq-generation.service';
 import type { GlmGenerationService } from './glm-generation.service';
 import type { PrismaClientManager } from '../../database/prisma.service';
 
-const GLM_RESPONSE = `Q: What material is this product made of?
-A: This product is made from high-grade stainless steel for maximum durability.
-
-Q: Is this dishwasher safe?
-A: Yes, all components are dishwasher safe on the top rack.
-
-Q: What warranty does Homtone offer?
-A: Homtone provides a 2-year limited warranty covering manufacturing defects.`;
+const GLM_JSON_RESPONSE = {
+  faqs: [
+    {
+      question: 'What material is this product made of?',
+      answer: 'This product is made from high-grade stainless steel for maximum durability.',
+    },
+    {
+      question: 'Is this dishwasher safe?',
+      answer: 'Yes, all components are dishwasher safe on the top rack.',
+    },
+    {
+      question: 'What warranty does Homtone offer?',
+      answer: 'Homtone provides a 2-year limited warranty covering manufacturing defects.',
+    },
+  ],
+};
 
 function makeService(opts: {
   product?: object | null;
-  glmText?: string;
+  glmJson?: object;
   glmThrows?: boolean;
   upsertResult?: object;
 }) {
@@ -44,9 +52,9 @@ function makeService(opts: {
   } as unknown as PrismaClientManager;
 
   const mockGlm = {
-    generateText: opts.glmThrows
+    generateJson: opts.glmThrows
       ? vi.fn().mockRejectedValue(new Error('GLM unreachable'))
-      : vi.fn().mockResolvedValue(opts.glmText ?? GLM_RESPONSE),
+      : vi.fn().mockResolvedValue(opts.glmJson ?? GLM_JSON_RESPONSE),
   } as unknown as GlmGenerationService;
 
   const mockCostTracking = { record: vi.fn().mockResolvedValue(undefined) } as any;
@@ -87,9 +95,10 @@ describe('FaqGenerationService', () => {
       const { service, mockGlm } = makeService({});
       await service.generateFaq('prod-1', 'en');
 
-      const promptArg = (mockGlm.generateText as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(promptArg).toContain('Stainless Steel Slow Cooker');
-      expect(promptArg).toContain('Homtone');
+      // generateJson(systemPrompt, userPrompt) — product info is in the second arg
+      const userPromptArg = (mockGlm.generateJson as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(userPromptArg).toContain('Stainless Steel Slow Cooker');
+      expect(userPromptArg).toContain('Homtone');
     });
   });
 
@@ -115,17 +124,19 @@ describe('FaqGenerationService', () => {
 
   describe('FAQ parsing', () => {
     it('parses up to 5 FAQ items even if GLM returns more', async () => {
-      const manyFaqs = Array.from(
-        { length: 7 },
-        (_, i) => `Q: Question ${i + 1}\nA: Answer ${i + 1}`,
-      ).join('\n\n');
-      const { service } = makeService({ glmText: manyFaqs });
+      const manyFaqs = {
+        faqs: Array.from({ length: 7 }, (_, i) => ({
+          question: `Question ${i + 1}`,
+          answer: `Answer ${i + 1}`,
+        })),
+      };
+      const { service } = makeService({ glmJson: manyFaqs });
       const result = await service.generateFaq('prod-1', 'en');
       expect(result.faqs.length).toBeLessThanOrEqual(5);
     });
 
     it('handles empty GLM response gracefully (returns empty faqs array)', async () => {
-      const { service } = makeService({ glmText: '' });
+      const { service } = makeService({ glmJson: { faqs: [] } });
       const result = await service.generateFaq('prod-1', 'en');
       expect(result.faqs).toEqual([]);
     });

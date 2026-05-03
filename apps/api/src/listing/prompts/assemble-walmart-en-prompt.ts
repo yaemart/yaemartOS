@@ -44,6 +44,15 @@ export function assembleWalmartEnPrompt(
       ? `\nBrand Terminology (use these terms accurately in the target language):\n${terminology.map((t) => `  - ${t.term}: ${t.definition}`).join('\n')}`
       : '';
 
+  const existingDrafts = input.existingDraftTitles ?? [];
+  const workspaceSection =
+    existingDrafts.length > 0
+      ? `\n# Workspace Context (existing draft titles — avoid overlap or contradiction)\n${existingDrafts
+          .slice(0, 5)
+          .map((t, i) => `  Draft ${i + 1}: "${t}"`)
+          .join('\n')}`
+      : '';
+
   const competitorSection =
     input.competitorUrls && input.competitorUrls.length > 0
       ? `Competitor reference URLs (study style, do NOT copy text):\n${input.competitorUrls.map((u) => `  - ${u}`).join('\n')}`
@@ -69,7 +78,7 @@ export function assembleWalmartEnPrompt(
 
   return `${systemLine}
 
-# ${brandVoiceSection}${terminologySection}
+# ${brandVoiceSection}${terminologySection}${workspaceSection}
 
 # Product Information
 - Product title: ${input.productTitle}
