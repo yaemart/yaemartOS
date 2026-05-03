@@ -125,7 +125,7 @@ export class IamController {
   async getCapabilities(@Req() req: Request) {
     const user = req.user as { id?: string; role?: string; brandId?: string } | undefined;
     if (!user?.role) {
-      return { capabilities: [] };
+      return { capabilities: [], availableActions: [] };
     }
 
     const brand = user.brandId ?? this.tenantContext.getTenant();
