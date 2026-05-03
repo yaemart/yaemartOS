@@ -20,6 +20,7 @@ function makeController(overrides?: {
 
   const versionService = {
     createVersion: vi.fn().mockResolvedValue({ id: 'v1', versionNumber: 1 }),
+    createDraftVersion: vi.fn().mockResolvedValue({ id: 'v1', versionNumber: 1 }),
     listVersions: vi.fn().mockResolvedValue([]),
     activateVersion: vi.fn(),
   } as any;
