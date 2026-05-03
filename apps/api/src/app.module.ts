@@ -26,6 +26,8 @@ import { TerminologyModule } from './terminology/terminology.module';
 import { MailModule } from './mail/mail.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 import { AdminModule } from './admin/admin.module';
+import { AdSyncModule } from './ad-sync/ad-sync.module';
+import { AdDashboardModule } from './ad-dashboard/ad-dashboard.module';
 
 @Module({
   imports: [
@@ -89,6 +91,8 @@ import { AdminModule } from './admin/admin.module';
     MailModule,
     CustomerPortalModule,
     AdminModule,
+    AdSyncModule,
+    AdDashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: TenantGuard },
