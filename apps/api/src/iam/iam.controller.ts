@@ -19,6 +19,8 @@ const KNOWN_OBJECTS = [
   'settings:write',
   'iam:read',
   'iam:write',
+  'terminology:read',
+  'terminology:write',
 ] as const;
 
 /**
@@ -109,6 +111,23 @@ const CAPABILITY_ACTIONS: Partial<Record<string, ActionDescriptor[]>> = {
     { method: 'POST', path: '/ai/mcp/query-inventory', description: '查询领星库存快照' },
     { method: 'POST', path: '/ai/mcp/listing-summary', description: '获取领星 ASIN Listing 摘要' },
     { method: 'POST', path: '/ai/mcp/keyword-suggestions', description: '获取领星关键词建议' },
+  ],
+  'terminology:read': [
+    {
+      method: 'GET',
+      path: '/terminology',
+      description: '列出品牌术语库（按 brandId + locale 筛选）',
+    },
+  ],
+  'terminology:write': [
+    { method: 'POST', path: '/terminology', description: '创建术语条目' },
+    { method: 'PATCH', path: '/terminology/:id', description: '更新术语条目' },
+    { method: 'DELETE', path: '/terminology/:id', description: '删除术语条目' },
+    {
+      method: 'POST',
+      path: '/terminology/import',
+      description: '批量导入术语 CSV（term,definition,example）',
+    },
   ],
 };
 

@@ -130,6 +130,41 @@ describe('IamController.getCapabilities', () => {
     expect(casbin.enforce).toHaveBeenCalledWith(expect.objectContaining({ brand: 'davivy' }));
   });
 
+  it('locale_reviewer has listings:read and terminology:read in capabilities', async () => {
+    const { controller } = createController({
+      enforce: async (ctx: any) => {
+        return (
+          (ctx.sub === 'locale_reviewer' && ctx.obj === 'listings' && ctx.act === 'read') ||
+          (ctx.sub === 'locale_reviewer' && ctx.obj === 'terminology' && ctx.act === 'read')
+        );
+      },
+    });
+
+    const result = await controller.getCapabilities(
+      makeReq({ id: 'u1', role: 'locale_reviewer', brandId: 'homtone' }),
+    );
+
+    expect(result.capabilities).toContain('listings:read');
+    expect(result.capabilities).toContain('terminology:read');
+    expect(result.capabilities).not.toContain('listings:write');
+    expect(result.capabilities).not.toContain('products:read');
+  });
+
+  it('locale_reviewer availableActions include GET /terminology and POST /terminology/import', async () => {
+    const { controller } = createController({
+      enforce: async (ctx: any) =>
+        ctx.obj === 'terminology' && (ctx.act === 'read' || ctx.act === 'write'),
+    });
+
+    const result = await controller.getCapabilities(
+      makeReq({ id: 'u1', role: 'locale_reviewer', brandId: 'homtone' }),
+    );
+
+    const paths = result.availableActions.map((a: { path: string }) => a.path);
+    expect(paths).toContain('/terminology');
+    expect(paths).toContain('/terminology/import');
+  });
+
   it('parallelises feature flag checks (Promise.all pattern)', async () => {
     const callOrder: string[] = [];
     const isEnabled = vi.fn().mockImplementation(async (flag: string) => {

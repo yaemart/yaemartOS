@@ -89,6 +89,59 @@ export class CasbinService implements OnModuleInit {
       '*',
       'allow',
     );
+
+    // locale_reviewer: can read all listings (for review purposes)
+    await this.enforcer.addPolicy(
+      'locale_reviewer',
+      'listings',
+      'read',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
+    // locale_reviewer: can write locale-specific listing fields only
+    // (title, bullets, description, searchTerms) — not pricing or identifiers
+    await this.enforcer.addPolicy(
+      'locale_reviewer',
+      'listings',
+      'write',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'title|bullets|description|searchTerms',
+      'allow',
+    );
+    // locale_reviewer: full read/write on terminology
+    await this.enforcer.addPolicy(
+      'locale_reviewer',
+      'terminology',
+      'read',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
+    await this.enforcer.addPolicy(
+      'locale_reviewer',
+      'terminology',
+      'write',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      '*',
+      'allow',
+    );
   }
 
   async enforce(input: EnforceInput): Promise<boolean> {

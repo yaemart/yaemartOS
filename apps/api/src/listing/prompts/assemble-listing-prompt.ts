@@ -1,18 +1,24 @@
 import type { GenerateListingInput } from '@yaemartos/shared-types';
 import { AMAZON_EN_LIMITS } from '../rules/amazon-en-limits';
+import { getLocaleGuidelines, isNonEnglishLocale } from './locale-writing-guidelines';
 
 /**
- * Assembles the user-turn prompt for Amazon EN listing generation.
- * Merges all four input channels into a single context block.
+ * Assembles the user-turn prompt for Amazon listing generation.
+ * Supports EN/ES/FR/DE/IT via direct writing strategy — the model writes
+ * in the target language directly rather than generating EN and translating.
  *
- * Keeps system guidance inline for S1 (no external .md file yet).
- * Prompt files will be extracted to packages/ai-services/src/prompts in S2+.
- * Brand voice guidelines will be moved to SystemConfig (DB) in S2+.
+ * Accepts an optional `terminology` array injected into the Brand Voice section
+ * to ensure brand-specific vocabulary consistency across languages.
  */
+
+export interface TermEntry {
+  term: string;
+  definition: string;
+}
 
 /**
  * Per-brand voice & tone guidelines injected into the prompt.
- * Static for S1; will be sourced from DB (SystemConfig/BrandGuidelineService) in S2+.
+ * Static for S1/S2; will be sourced from DB (SystemConfig/BrandGuidelineService) in S3+.
  */
 const BRAND_VOICE: Record<string, string> = {
   homtone:
@@ -29,11 +35,23 @@ const BRAND_VOICE: Record<string, string> = {
     'Emphasize durability, outdoor performance, and an active lifestyle. Use action-oriented language.',
 };
 
-export function assembleAmazonEnPrompt(input: GenerateListingInput): string {
+export function assembleAmazonEnPrompt(
+  input: GenerateListingInput,
+  terminology?: TermEntry[],
+): string {
+  const locale = (input.targetLocale as string) || 'en';
+  const langName = localeDisplayName(locale);
+  const isNonEn = isNonEnglishLocale(locale as any);
+
   const voiceGuide = BRAND_VOICE[input.brandId?.toLowerCase() ?? ''];
   const brandVoiceSection = voiceGuide
     ? `Brand Voice Guide:\n${voiceGuide}`
     : `Brand: ${input.brandId} (no specific voice guide; write in a professional, benefit-focused tone).`;
+
+  const terminologySection =
+    terminology && terminology.length > 0
+      ? `\nBrand Terminology (use these terms accurately in the target language):\n${terminology.map((t) => `  - ${t.term}: ${t.definition}`).join('\n')}`
+      : '';
 
   const competitorSection =
     input.competitorUrls && input.competitorUrls.length > 0
@@ -54,16 +72,19 @@ export function assembleAmazonEnPrompt(input: GenerateListingInput): string {
       ? `Target keywords (weave naturally, do NOT keyword-stuff):\n  ${(input.lingxingKeywordSeed ?? input.keywords ?? []).join(', ')}`
       : 'No keyword seeds provided.';
 
-  return `You are an expert Amazon copywriter for the brand "${input.brandId}" (platform: ${input.platform}).
-Write a complete Amazon EN product listing in valid JSON matching the provided schema.
+  const systemLine = isNonEn
+    ? `You are an expert Amazon copywriter for the brand "${input.brandId}" (platform: ${input.platform}).\nWrite a complete Amazon ${langName} product listing in valid JSON matching the provided schema.\nWrite ALL content directly in ${langName}. Do NOT translate from English.`
+    : `You are an expert Amazon copywriter for the brand "${input.brandId}" (platform: ${input.platform}).\nWrite a complete Amazon EN product listing in valid JSON matching the provided schema.`;
 
-# ${brandVoiceSection}
+  return `${systemLine}
+
+# ${brandVoiceSection}${terminologySection}
 
 # Product Information
 - Product title: ${input.productTitle}
 - Category: ${input.productCategory}
 - Brand: ${input.brandId}
-- Locale: ${input.targetLocale}
+- Locale: ${locale}
 
 # Input Channels
 ${competitorSection}
@@ -74,7 +95,7 @@ ${lexiconSection}
 
 ${keywordSection}
 
-# Amazon EN Constraints (MUST NOT violate)
+# Amazon Constraints (MUST NOT violate)
 - title: max ${AMAZON_EN_LIMITS.TITLE_MAX_CHARS} characters
 - bullets: exactly 5 bullet points, each max ${AMAZON_EN_LIMITS.BULLET_MAX_CHARS} characters
 - description: max ${AMAZON_EN_LIMITS.DESCRIPTION_MAX_CHARS} characters
@@ -82,8 +103,16 @@ ${keywordSection}
 - aPlus: optional A+ content in plain text, max ${AMAZON_EN_LIMITS.APLUS_MAX_CHARS} characters
 
 # Writing Guidelines
-- Lead the title with the brand name + primary keyword + key differentiator
-- Each bullet starts with a capitalized feature name followed by an em-dash
-- Description must be a coherent paragraph (no bullet formatting)
-- Do NOT include any markdown formatting in the JSON string values`;
+${getLocaleGuidelines(locale as any)}`;
+}
+
+function localeDisplayName(locale: string): string {
+  const names: Record<string, string> = {
+    en: 'English',
+    es: 'Spanish',
+    fr: 'French',
+    de: 'German',
+    it: 'Italian',
+  };
+  return names[locale] ?? 'English';
 }

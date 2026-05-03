@@ -129,15 +129,16 @@ model Brand {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  users      User[]
-  categories Category[]
-  products   Product[]
-  markets    Market[]
-  articles   Article[]
-  shops      Shop[]
-  listings   Listing[]
-  metrics    Metric[]
-  invitations Invitation[]
+  users             User[]
+  categories        Category[]
+  products          Product[]
+  markets           Market[]
+  articles          Article[]
+  shops             Shop[]
+  listings          Listing[]
+  metrics           Metric[]
+  invitations       Invitation[]
+  terminologyEntries TerminologyEntry[]
 
   @@schema("public")
 }
@@ -330,8 +331,26 @@ model Market {
   articles Article[]
   shops    Shop[]
   listings Listing[]
+  locales  Locale[]
 
   @@unique([brandId, code])
+  @@schema("public")
+}
+
+/// Represents a Market × Language combination (e.g., US × EN, US × ES).
+/// isPrimary marks the default language for that market.
+model Locale {
+  id        String     @id @default(cuid())
+  marketId  String
+  language  LocaleCode
+  isPrimary Boolean    @default(false)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([marketId, language])
   @@schema("public")
 }
 
@@ -445,6 +464,25 @@ model ListingVersion {
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([listingId, versionNumber])
+  @@schema("public")
+}
+
+/// Brand-scoped vocabulary entries for injection into AI Listing generation prompts.
+/// Imported via CSV (term,definition,example) or managed through CRUD API.
+model TerminologyEntry {
+  id         String     @id @default(cuid())
+  brandId    String
+  locale     LocaleCode
+  category   String?
+  term       String
+  definition String
+  example    String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, locale, term])
   @@schema("public")
 }
 
