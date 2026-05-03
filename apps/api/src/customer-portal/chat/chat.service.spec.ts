@@ -14,13 +14,21 @@ function makeMockDb(
     chatSession: {
       findUnique: vi
         .fn()
-        .mockResolvedValue(overrides?.chatSession ?? { id: 'sess-1', brandId: 'homtone' }),
+        .mockResolvedValue(
+          overrides?.chatSession ?? { id: 'sess-1', brandId: 'homtone', customerId: null },
+        ),
       create: vi.fn().mockResolvedValue({ id: 'sess-1', sessionToken: 'tok-abc' }),
       update: vi.fn().mockResolvedValue({}),
     },
     chatMessage: {
       create: vi.fn().mockResolvedValue({ id: 'msg-1' }),
       findMany: vi.fn().mockResolvedValue([{ role: 'user', content: 'Hello' }]),
+    },
+    systemConfig: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    ticket: {
+      count: vi.fn().mockResolvedValue(0),
     },
   };
 }
