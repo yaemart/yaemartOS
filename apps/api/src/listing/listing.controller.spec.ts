@@ -190,4 +190,29 @@ describe('ListingController.batchGenerate', () => {
       } as any),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('returns partial results when some combos fail and some succeed', async () => {
+    let callCount = 0;
+    const { controller } = makeController({
+      generateListing: vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount % 2 === 0) {
+          throw new Error('LLM timeout');
+        }
+        return { title: 'Test', bullets: [], description: '', searchTerms: [] };
+      }),
+    });
+    const result = await controller.batchGenerate(
+      {
+        ...BASE_BODY,
+        languages: ['en', 'es'],
+        targets: [{ shopId: 'shop1', platformCode: 'amazon', platformListingId: 'ASIN1' }],
+      },
+      { user: { role: 'operator', brandId: 'homtone' } } as any,
+    );
+    expect(result.results).toHaveLength(2);
+    const statuses = result.results.map((r) => r.status);
+    expect(statuses).toContain('completed');
+    expect(statuses).toContain('failed');
+  });
 });
