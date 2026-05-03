@@ -5,7 +5,7 @@ import { PrismaClientManager } from '../../database/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import { WARRANTY_REMINDER_QUEUE, type WarrantyReminderJobPayload } from './warranty-reminder.job';
 
-@Processor(WARRANTY_REMINDER_QUEUE)
+@Processor(WARRANTY_REMINDER_QUEUE, { concurrency: 1 })
 export class WarrantyReminderProcessor extends WorkerHost {
   private readonly logger = new Logger(WarrantyReminderProcessor.name);
 
@@ -19,7 +19,7 @@ export class WarrantyReminderProcessor extends WorkerHost {
   async process(job: Job<WarrantyReminderJobPayload>): Promise<void> {
     const { warrantyId, email, locale, brandId, productSku, warrantyExpiresAt } = job.data;
 
-    const tenantDb = this.prismaManager.getTenantClient(brandId);
+    const tenantDb = this.prismaManager.getTenantClient(brandId) as any;
     const warranty = await tenantDb.warrantyRegistration.findUnique({
       where: { id: warrantyId },
       select: { reminderSentAt: true, status: true },
@@ -40,6 +40,13 @@ export class WarrantyReminderProcessor extends WorkerHost {
       return;
     }
 
+    // Mark as sent BEFORE sending email — ensures retry idempotency.
+    // If the email send fails and the job retries, the DB check above prevents duplicates.
+    await tenantDb.warrantyRegistration.update({
+      where: { id: warrantyId },
+      data: { reminderSentAt: new Date() },
+    });
+
     const portalBase = process.env.PORTAL_BASE_URL ?? 'http://localhost:3001';
     const renewUrl = `${portalBase}/${locale}/tickets/new`;
 
@@ -47,11 +54,6 @@ export class WarrantyReminderProcessor extends WorkerHost {
       productSku,
       warrantyExpiresAt,
       renewUrl,
-    });
-
-    await tenantDb.warrantyRegistration.update({
-      where: { id: warrantyId },
-      data: { reminderSentAt: new Date() },
     });
 
     this.logger.log(`Warranty expiry reminder sent for warranty=${warrantyId} email=${email}`);

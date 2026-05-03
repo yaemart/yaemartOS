@@ -4,9 +4,9 @@ export class OrderLookupDto {
   @IsString()
   @MinLength(3)
   @MaxLength(100)
-  orderNumber: string;
+  orderNumber!: string;
 
   @IsString()
   @MinLength(1)
-  turnstileToken: string;
+  turnstileToken!: string;
 }

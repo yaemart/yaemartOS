@@ -1,12 +1,18 @@
 import { createHash } from 'crypto';
-import { ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PRISMA_TENANT_CLIENT } from '../../database/database.tokens';
 import { TenantPrismaClient } from '../../database/tenant-prisma.types';
 import { TurnstileService } from '../../common/captcha/turnstile.service';
 import { LingxingClient } from '@yaemartos/lingxing-client';
 import type { OrderStatusResult } from '@yaemartos/lingxing-client';
-
-const IP_SALT = process.env.LOOKUP_IP_SALT ?? 'yaemartos-ip-salt';
 
 export interface OrderLookupResult {
   found: true;
@@ -22,21 +28,34 @@ export interface OrderLookupNotFound {
 }
 
 @Injectable()
-export class OrderLookupService {
+export class OrderLookupService implements OnModuleInit {
   private readonly logger = new Logger(OrderLookupService.name);
+  private ipSalt!: string;
 
   constructor(
     @Inject(PRISMA_TENANT_CLIENT) private readonly tenantDb: TenantPrismaClient,
     private readonly turnstile: TurnstileService,
+    private readonly config: ConfigService,
     @Optional() private readonly lingxing: LingxingClient | null,
   ) {}
+
+  onModuleInit() {
+    const salt = this.config.get<string>('LOOKUP_IP_SALT');
+    if (!salt && process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'LOOKUP_IP_SALT is not configured. Set this env var to prevent IP pseudonymisation reversal.',
+      );
+    }
+    this.ipSalt = salt ?? 'yaemartos-ip-salt-dev';
+  }
 
   async lookup(
     orderNumber: string,
     turnstileToken: string,
     ip: string,
   ): Promise<OrderLookupResult | OrderLookupNotFound> {
-    const captchaOk = await this.turnstile.verify(turnstileToken, ip);
+    // verifyOrThrow distinguishes invalid (→ 403) from unavailable (→ 503)
+    const captchaOk = await this.turnstile.verifyOrThrow(turnstileToken, ip);
     if (!captchaOk) {
       await this.logAttempt(orderNumber, ip, 'captcha_failed');
       throw new ForbiddenException('CAPTCHA_FAILED');
@@ -76,7 +95,7 @@ export class OrderLookupService {
   private async logAttempt(orderNumber: string, ip: string, resultStatus: string): Promise<void> {
     try {
       const ipHash = createHash('sha256')
-        .update(ip + IP_SALT)
+        .update(ip + this.ipSalt)
         .digest('hex');
       await this.tenantDb.orderLookup.create({
         data: { orderNumber, ipHash, resultStatus },

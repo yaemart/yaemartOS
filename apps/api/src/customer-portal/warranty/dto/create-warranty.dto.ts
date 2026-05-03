@@ -3,14 +3,14 @@ import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
 export class CreateWarrantyDto {
   @IsString()
   @MaxLength(100)
-  productSku: string;
+  productSku!: string;
 
   @IsString()
   @MaxLength(100)
-  serialNumber: string;
+  serialNumber!: string;
 
   @IsISO8601()
-  purchaseDate: string;
+  purchaseDate!: string;
 
   @IsOptional()
   @IsString()

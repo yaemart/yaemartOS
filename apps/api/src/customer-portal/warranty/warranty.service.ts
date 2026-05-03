@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { addMonths } from 'date-fns';
 import { PRISMA_TENANT_CLIENT } from '../../database/database.tokens';
 import { TenantPrismaClient } from '../../database/tenant-prisma.types';
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
@@ -50,8 +51,8 @@ export class WarrantyService {
     }
 
     const purchaseDate = new Date(dto.purchaseDate);
-    const warrantyExpiresAt = new Date(purchaseDate);
-    warrantyExpiresAt.setMonth(warrantyExpiresAt.getMonth() + DEFAULT_WARRANTY_MONTHS);
+    // addMonths correctly handles month-end edge cases (e.g. Feb 29 + 12m = Feb 28)
+    const warrantyExpiresAt = addMonths(purchaseDate, DEFAULT_WARRANTY_MONTHS);
 
     // Only store publicId — secureUrl for authenticated assets must be generated
     // on-demand via signUrl() to avoid exposing a permanent bypass URL.
@@ -102,7 +103,12 @@ export class WarrantyService {
             productSku: dto.productSku,
             warrantyExpiresAt: warrantyExpiresAt.toISOString(),
           },
-          { delay, jobId: `warranty-reminder:${warranty.id}` },
+          {
+            delay,
+            jobId: `warranty-reminder:${warranty.id}`,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 60_000 },
+          },
         );
       }
     }

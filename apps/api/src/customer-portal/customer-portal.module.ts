@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
@@ -35,31 +34,17 @@ import { OrderLookupService } from './order-lookup/order-lookup.service';
     MailModule,
     SearchModule,
     CloudinaryModule,
-    JwtModule.register({
-      secret: process.env.CUSTOMER_JWT_SECRET ?? 'customer-changeme',
-      signOptions: { expiresIn: '15m' },
-    }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 900000,
-        limit: 5,
-      },
-    ]),
-    BullModule.forRootAsync({
+    JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const redisUrl = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
-        const url = new URL(redisUrl);
-        return {
-          connection: {
-            host: url.hostname,
-            port: Number(url.port) || 6379,
-            password: url.password || undefined,
-            tls: url.protocol === 'rediss:' ? {} : undefined,
-          },
-        };
+        const secret = config.get<string>('CUSTOMER_JWT_SECRET');
+        if (!secret) {
+          throw new Error(
+            'CUSTOMER_JWT_SECRET is not configured. Set this env var before starting the server.',
+          );
+        }
+        return { secret, signOptions: { expiresIn: '15m' } };
       },
     }),
     BullModule.registerQueue({ name: WARRANTY_REMINDER_QUEUE }),

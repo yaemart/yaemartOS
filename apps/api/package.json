@@ -43,6 +43,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cloudinary": "^2.6.1",
+    "date-fns": "^4.1.0",
     "joi": "^17.13.3",
     "multer": "^1.4.5-lts.2",
     "nestjs-cls": "^5.3.0",
