@@ -210,3 +210,108 @@ export async function generateListingDraft(
     brand,
   });
 }
+
+// ---------------------------------------------------------------------------
+// W29-W30: Multi-language batch generation types and API calls
+// ---------------------------------------------------------------------------
+
+export type LocaleInfo = {
+  language: string;
+  isPrimary: boolean;
+  /** Display label, e.g. "EN", "ES", "FR" */
+  label: string;
+};
+
+export type BatchGenerateTarget = {
+  shopId: string;
+  platformCode: string;
+  platformListingId: string;
+  competitorUrls?: string[];
+  manualSellingPoints?: string;
+  categoryLexicon?: string[];
+  lingxingKeywordSeed?: string[];
+};
+
+export type BatchGenerateResult = {
+  listingId: string | null;
+  shopId: string;
+  platformCode: string;
+  language: string;
+  versionNumber: number | null;
+  status: 'completed' | 'failed';
+  error?: string;
+};
+
+const LOCALE_LABELS: Record<string, string> = {
+  en: 'EN',
+  es: 'ES',
+  fr: 'FR',
+  de: 'DE',
+  it: 'IT',
+};
+
+/**
+ * Fetches active locales for a given market from `GET /locales?marketId=xxx`.
+ * Returns locales with display labels (e.g. "EN", "ES", "FR").
+ */
+export async function fetchMarketLocales(
+  accessToken: string,
+  marketId: string,
+  brand?: string,
+): Promise<LocaleInfo[]> {
+  const data = await request<{ locales: { language: string; isPrimary: boolean }[] }>(
+    `/locales?marketId=${encodeURIComponent(marketId)}`,
+    accessToken,
+    { brand },
+  );
+  return data.locales.map((l) => ({
+    language: l.language,
+    isPrimary: l.isPrimary,
+    label: LOCALE_LABELS[l.language] ?? l.language.toUpperCase(),
+  }));
+}
+
+/**
+ * Calls `POST /listings/batch-generate` with an array of languages and targets.
+ * Returns per-combo results (status 'completed' or 'failed').
+ */
+export async function batchGenerateMultilingual(
+  accessToken: string,
+  payload: {
+    productId: string;
+    brandId: string;
+    marketId: string;
+    productTitle: string;
+    productCategory: string;
+    languages: string[];
+    targets: BatchGenerateTarget[];
+  },
+  brand?: string,
+): Promise<{ results: BatchGenerateResult[] }> {
+  return request<{ results: BatchGenerateResult[] }>('/listings/batch-generate', accessToken, {
+    method: 'POST',
+    body: payload,
+    brand,
+  });
+}
+
+/**
+ * Fetches all listings for the same product/shop/platform combination,
+ * used to discover "sibling" listings in other languages.
+ */
+export async function fetchSiblingListings(
+  accessToken: string,
+  params: { productId: string; shopId: string; platformId: string },
+  brand?: string,
+): Promise<{ id: string; language: string }[]> {
+  const query = new URLSearchParams({
+    productId: params.productId,
+    shopId: params.shopId,
+    platformId: params.platformId,
+    pageSize: '20',
+  });
+  const data = await request<Paged<ListingItem>>(`/listings?${query.toString()}`, accessToken, {
+    brand,
+  });
+  return data.data.map((l) => ({ id: l.id, language: l.language }));
+}

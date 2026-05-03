@@ -37,6 +37,8 @@ export interface GenerateListingInput {
   categoryLexicon?: string[];
   /** Keyword seeds pulled from Lingxing MCP (readonly, shop-scoped) */
   lingxingKeywordSeed?: string[];
+  /** Brand terminology entries to inject into the prompt for vocabulary consistency */
+  terminology?: { term: string; definition: string }[];
 }
 
 export interface ListingContent {

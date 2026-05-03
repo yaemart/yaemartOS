@@ -476,6 +476,11 @@ async function main() {
         label: '批量多平台 Listing 生成',
       },
       { key: 'feature_flag.LISTING_MATRIX', value: 'true', label: '矩阵分析 Dashboard' },
+      {
+        key: 'feature_flag.MULTILINGUAL_LISTING_GENERATION',
+        value: 'true',
+        label: '多语言 Listing 批量生成（EN/ES/FR）',
+      },
     ];
     for (const flag of devFlags) {
       await prisma.systemConfig.upsert({

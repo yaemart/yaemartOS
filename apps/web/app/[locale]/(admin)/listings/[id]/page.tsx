@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth/route-guard';
 import { ListingEditorShell } from '@/components/listing/listing-editor-shell';
 import { ListingMatrixDashboard } from '@/components/listing/listing-matrix-dashboard';
 import { fetchCapabilities } from '@/lib/api/auth-client';
-import { getListing } from '@/lib/api/listing-client';
+import { fetchMarketLocales, fetchSiblingListings, getListing } from '@/lib/api/listing-client';
 
 type Tab = 'editor' | 'matrix';
 
@@ -28,6 +28,18 @@ export default async function AdminListingEditorPage({
   if (!listing) {
     redirect(`/${params.locale}/listings`);
   }
+
+  // Fetch market locales and sibling listings in parallel; degrade gracefully on failure.
+  const [marketLocales, siblingListings] = await Promise.all([
+    fetchMarketLocales(guard.accessToken, listing.marketId, guard.user.brandId).catch(() => []),
+    listing.productId
+      ? fetchSiblingListings(
+          guard.accessToken,
+          { productId: listing.productId, shopId: listing.shopId, platformId: listing.platformId },
+          guard.user.brandId,
+        ).catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
   const matrixEnabled = capabilities.includes('LISTING_MATRIX');
   const activeTab: Tab =
@@ -77,6 +89,8 @@ export default async function AdminListingEditorPage({
             locale={params.locale}
             accessToken={guard.accessToken}
             brandId={guard.user.brandId}
+            marketLocales={marketLocales}
+            siblingListings={siblingListings}
           />
         )}
       </div>

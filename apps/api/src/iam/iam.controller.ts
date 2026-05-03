@@ -58,6 +58,7 @@ const CAPABILITY_ACTIONS: Partial<Record<string, ActionDescriptor[]>> = {
     { method: 'GET', path: '/listings', description: '列出 Listing' },
     { method: 'GET', path: '/listings/:id', description: '查看 Listing 详情（含版本列表）' },
     { method: 'GET', path: '/listings/matrix', description: '获取 Listing 相似度矩阵分析' },
+    { method: 'GET', path: '/locales', description: '获取市场可用语言列表（供语言切换器使用）' },
   ],
   'listings:write': [
     { method: 'POST', path: '/listings', description: '创建 Listing' },

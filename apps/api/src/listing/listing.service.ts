@@ -32,6 +32,8 @@ type ListListingsQuery = {
   productId?: string;
   brandId?: string;
   status?: string;
+  shopId?: string;
+  platformId?: string;
 };
 
 /**
@@ -67,6 +69,8 @@ export class ListingService {
       ...(query.productId ? { productId: query.productId } : {}),
       ...(query.brandId ? { brandId: query.brandId } : {}),
       ...(query.status ? { status: query.status as ListingStatus } : {}),
+      ...(query.shopId ? { shopId: query.shopId } : {}),
+      ...(query.platformId ? { platformId: query.platformId } : {}),
     };
 
     const [data, total] = await Promise.all([
