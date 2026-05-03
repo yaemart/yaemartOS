@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate:all-tenants": "node ./scripts/migrate-all-schemas.js"
+    "db:migrate:all-tenants": "node ./scripts/migrate-all-schemas.js",
+    "check:env:s2": "tsx scripts/ops/check-s2-env.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
