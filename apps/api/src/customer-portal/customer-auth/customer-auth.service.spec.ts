@@ -135,12 +135,12 @@ describe('CustomerAuthService', () => {
       expect(mockMailService.sendPasswordReset).not.toHaveBeenCalled();
     });
 
-    it('always returns 200 even when DB throws (anti-enumeration)', async () => {
+    it('propagates error when DB throws (infrastructure failures are not silenced)', async () => {
       mockDb.$queryRaw.mockRejectedValue(new Error('DB connection error'));
 
-      const result = await service.forgotPassword('any@example.com', TENANT_ID);
-
-      expect(result).toEqual({ message: 'PASSWORD_RESET_EMAIL_SENT' });
+      await expect(service.forgotPassword('any@example.com', TENANT_ID)).rejects.toThrow(
+        'DB connection error',
+      );
     });
   });
 
@@ -164,7 +164,10 @@ describe('CustomerAuthService', () => {
 
   describe('verifyEmail', () => {
     it('throws 400 when token is already used', async () => {
-      mockDb.$queryRaw.mockResolvedValue([{ ...mockVerificationRow, used_at: new Date() }]);
+      // First call: UPDATE … WHERE used_at IS NULL → returns [] because token was already used
+      mockDb.$queryRaw.mockResolvedValueOnce([]);
+      // Second call: SELECT to distinguish reason → row shows used_at is set
+      mockDb.$queryRaw.mockResolvedValueOnce([{ ...mockVerificationRow, used_at: new Date() }]);
 
       await expect(service.verifyEmail('used-token', TENANT_ID)).rejects.toThrow(
         BadRequestException,
@@ -172,7 +175,10 @@ describe('CustomerAuthService', () => {
     });
 
     it('throws 400 when token is expired', async () => {
-      mockDb.$queryRaw.mockResolvedValue([
+      // First call: UPDATE … WHERE expires_at > now → returns [] because token is expired
+      mockDb.$queryRaw.mockResolvedValueOnce([]);
+      // Second call: SELECT to distinguish reason → row shows expires_at in the past
+      mockDb.$queryRaw.mockResolvedValueOnce([
         { ...mockVerificationRow, expires_at: new Date(Date.now() - 1000) },
       ]);
 
