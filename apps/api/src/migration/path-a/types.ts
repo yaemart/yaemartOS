@@ -36,12 +36,20 @@ export interface PathAExtractionResult {
   lingxingUpdatedAt: string | null;
 }
 
+export type PathAPlatformCode = 'amazon' | 'walmart';
+
+export interface PathANormalizeContext {
+  brandId: string;
+  marketCode: string;
+  platformCode: PathAPlatformCode;
+}
+
 export interface PathANormalizedRecord {
   runId: string;
   sourceRecordId: string;
-  brandId: 'homtone';
-  marketCode: 'US';
-  platformCode: 'amazon';
+  brandId: string;
+  marketCode: string;
+  platformCode: PathAPlatformCode;
   sku: string;
   asin: string | null;
   title: string;

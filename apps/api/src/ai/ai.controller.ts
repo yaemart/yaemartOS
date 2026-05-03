@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { IListingGenerationService } from './interfaces/listing-generation.interface';
 import type { IMcpToolCallService } from './interfaces/mcp-tool-call.interface';
 import { LISTING_GENERATION_SERVICE, MCP_TOOL_CALL_SERVICE } from './tokens';
+import { LINGXING_TOOL_DESCRIPTORS } from './tools/lingxing-tools';
 
 @Controller('ai')
 export class AiController {
@@ -19,12 +20,15 @@ export class AiController {
     return { message };
   }
 
+  /**
+   * Returns the full structured descriptor for each Lingxing MCP tool.
+   * Agents SHOULD call this endpoint to discover available tools, their
+   * descriptions, and parameter schemas before constructing tool calls.
+   */
   @Get('mcp/tools')
   @UseGuards(JwtAuthGuard)
   listMcpTools() {
-    return {
-      tools: ['inventoryQuery', 'listingSummary', 'keywordSuggestions'],
-    };
+    return { tools: LINGXING_TOOL_DESCRIPTORS };
   }
 
   @Post('mcp/query-inventory')

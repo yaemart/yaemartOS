@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -25,6 +27,7 @@ import { LISTING_GENERATION_SERVICE } from '../ai/tokens';
 import { FeatureFlagService } from '../common/feature-flag/feature-flag.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
+import { BatchGenerateListingDto } from './dto/batch-generate-listing.dto';
 import { ListingService } from './listing.service';
 import { ListingVersionService } from './listing-version.service';
 
@@ -38,6 +41,26 @@ export class ListingController {
     private readonly listingGeneration: IListingGenerationService,
     private readonly featureFlag: FeatureFlagService,
   ) {}
+
+  /**
+   * GET /listings/matrix?productId=xxx
+   * Returns a matrix analysis for all listings of a given product:
+   * - similarity matrix (embedding cosine distance between titles)
+   * - traffic strategy distribution
+   * Sales/impression data is deferred to S4; the field `salesAvailableFrom` signals this.
+   */
+  @Get('matrix')
+  @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
+  async getMatrix(@Query('productId') productId: string, @Req() req: Request) {
+    if (!productId) {
+      throw new BadRequestException('productId query param is required');
+    }
+    const brandId: string | undefined = (req as any)?.resolvedBrandId;
+    if (!brandId) {
+      throw new BadRequestException('x-yaemart-brand header is required');
+    }
+    return this.listingService.getMatrix(productId, brandId);
+  }
 
   @Get()
   @RequirePolicy({ obj: 'listings', act: 'read', field: '*' })
@@ -83,6 +106,99 @@ export class ListingController {
   }
 
   /**
+   * POST /listings/batch-generate
+   * Generates Listing drafts for the same product across multiple shops/platforms in parallel.
+   * Each target results in an independent Listing record + a draft ListingVersion.
+   * Partial failures are surfaced per-target; the endpoint returns 200 unless all targets fail.
+   */
+  @Post('batch-generate')
+  @RequirePolicy({ obj: 'listings', act: 'write', field: '*' })
+  @HttpCode(HttpStatus.OK)
+  async batchGenerate(@Body() body: BatchGenerateListingDto, @Req() req: Request) {
+    if (!body.targets || body.targets.length === 0) {
+      throw new BadRequestException('targets must be a non-empty array');
+    }
+
+    const featureEnabled = await this.featureFlag.isEnabled('LISTING_AI', body.brandId);
+    if (!featureEnabled) {
+      throw new ForbiddenException(
+        'Listing AI generation is currently disabled (feature flag off)',
+      );
+    }
+
+    const actor = this.actor(req);
+
+    const results = await Promise.allSettled(
+      body.targets.map(async (target) => {
+        const platformId = await this.listingService.resolvePlatformId(target.platformCode);
+
+        const listing = await this.listingService.findOrCreateDraft({
+          productId: body.productId,
+          brandId: body.brandId,
+          marketId: body.marketId,
+          platformId,
+          shopId: target.shopId,
+          language: body.language,
+          platformListingId: target.platformListingId,
+        });
+
+        const input = {
+          brandId: body.brandId as any,
+          platform: target.platformCode as any,
+          productTitle: body.productTitle,
+          productCategory: body.productCategory,
+          targetLocale: body.language as any,
+          competitorUrls: target.competitorUrls,
+          manualSellingPoints: target.manualSellingPoints,
+          categoryLexicon: target.categoryLexicon,
+          lingxingKeywordSeed: target.lingxingKeywordSeed,
+        };
+
+        const content = await this.listingGeneration.generateListing(input);
+        const version = await this.versionService.createVersion(
+          listing.id,
+          content,
+          actor,
+          'draft',
+        );
+
+        return {
+          listingId: listing.id,
+          shopId: target.shopId,
+          platformCode: target.platformCode,
+          versionNumber: version.versionNumber,
+          status: 'completed' as const,
+        };
+      }),
+    );
+
+    const mapped = results.map((r, i) => {
+      const target = body.targets[i]!;
+      if (r.status === 'fulfilled') {
+        return r.value;
+      }
+      return {
+        listingId: null,
+        shopId: target.shopId,
+        platformCode: target.platformCode,
+        versionNumber: null,
+        status: 'failed' as const,
+        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      };
+    });
+
+    const allFailed = mapped.every((r) => r.status === 'failed');
+    if (allFailed) {
+      throw new BadRequestException({
+        message: 'All batch generation targets failed',
+        results: mapped,
+      });
+    }
+
+    return { results: mapped };
+  }
+
+  /**
    * POST /listings/:id/generate
    * Generates a new draft ListingVersion using the AI listing generation service.
    * Guarded by feature flag FEATURE_LISTING_AI (set to 'true' to enable).
@@ -106,7 +222,7 @@ export class ListingController {
   ) {
     const listing = await this.listingService.getById(id);
 
-    const featureEnabled = this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
+    const featureEnabled = await this.featureFlag.isEnabled('LISTING_AI', listing.brandId);
     if (!featureEnabled) {
       throw new ForbiddenException(
         'Listing AI generation is currently disabled (feature flag off)',
@@ -115,7 +231,7 @@ export class ListingController {
 
     const input: GenerateListingInput = {
       brandId: listing.brandId as any,
-      platform: 'amazon',
+      platform: listing.platform.code as any,
       productTitle: body.productTitle,
       productCategory: body.productCategory,
       targetLocale: listing.language as any,

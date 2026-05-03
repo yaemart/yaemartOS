@@ -1,7 +1,11 @@
 import { ConfigService } from '@nestjs/config';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateListingInput } from '@yaemartos/shared-types';
-import { GeminiListingGenerationService } from './gemini-listing-generation.service';
+import {
+  GeminiListingGenerationService,
+  UnsupportedPlatformError,
+} from './gemini-listing-generation.service';
+import { WALMART_EN_LIMITS } from '../../listing/rules/walmart-en-limits';
 
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>();
@@ -152,6 +156,108 @@ describe('GeminiListingGenerationService', () => {
       const result = await service.generateListing(minimalInput);
       expect(result.title).toBeTruthy();
       expect(result.bullets).toHaveLength(5);
+    });
+  });
+
+  // ── Walmart platform ───────────────────────────────────────────────────────
+
+  describe('generateListing (Walmart platform, mock mode)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    const walmartInput: GenerateListingInput = {
+      brandId: 'homtone',
+      platform: 'walmart',
+      productTitle: '6QT Programmable Slow Cooker',
+      productCategory: 'Kitchen Appliances',
+      targetLocale: 'en',
+      keywords: ['slow cooker', 'crockpot'],
+    };
+
+    it('returns mock content with ≤ 10 bullets (Key Features) when no API key', async () => {
+      const service = createService(undefined);
+      const result = await service.generateListing(walmartInput);
+      expect(result.title).toBeTruthy();
+      expect(result.bullets.length).toBeLessThanOrEqual(WALMART_EN_LIMITS.KEY_FEATURES_MAX_COUNT);
+      expect(result.description).toBeTruthy();
+      expect(mockGenerateObject).not.toHaveBeenCalled();
+    });
+
+    it('uses Walmart prompt (contains "Key Features") when API key is set', async () => {
+      const mockContent = {
+        title: 'Homtone 6QT Programmable Slow Cooker',
+        bullets: [
+          'Holds up to 6 quarts for family-sized meals',
+          'Digital timer keeps cooking on schedule',
+          'Keep-warm mode activates automatically',
+        ],
+        description: 'The Homtone slow cooker delivers perfectly cooked meals every time.',
+        searchTerms: ['slow cooker', 'crockpot'],
+      };
+      mockGenerateObject.mockResolvedValue({ object: mockContent } as any);
+
+      const service = createService('fake-key');
+      await service.generateListing(walmartInput);
+
+      const lastCall = mockGenerateObject.mock.calls[mockGenerateObject.mock.calls.length - 1];
+      expect((lastCall[0] as any).prompt).toContain('Key Features');
+      expect((lastCall[0] as any).prompt).not.toContain('Bullet Points');
+    });
+
+    it('throws when Walmart AI output exceeds key-feature count limit', async () => {
+      const oversized = {
+        title: 'Homtone Cooker',
+        bullets: Array.from(
+          { length: WALMART_EN_LIMITS.KEY_FEATURES_MAX_COUNT + 1 },
+          (_, i) => `Feature ${i}`,
+        ),
+        description: 'Good product.',
+        searchTerms: ['cooker'],
+      };
+      mockGenerateObject.mockResolvedValue({ object: oversized } as any);
+
+      const service = createService('fake-key');
+      await expect(service.generateListing(walmartInput)).rejects.toThrow(/character rules/i);
+    });
+
+    it('does NOT apply Amazon 5-bullet limit to Walmart content', async () => {
+      const walmartContent = {
+        title: 'Homtone Cooker',
+        bullets: Array.from(
+          { length: 8 },
+          (_, i) => `Feature ${i + 1} — detailed description here`,
+        ),
+        description: 'Quality slow cooker for busy families.',
+        searchTerms: ['cooker'],
+      };
+      mockGenerateObject.mockResolvedValue({ object: walmartContent } as any);
+
+      const service = createService('fake-key');
+      const result = await service.generateListing(walmartInput);
+      expect(result.bullets).toHaveLength(8);
+    });
+  });
+
+  // ── Unsupported platform ───────────────────────────────────────────────────
+
+  describe('generateListing (unsupported platform)', () => {
+    it('throws UnsupportedPlatformError for platform shopify', async () => {
+      const service = createService(undefined);
+      const input: GenerateListingInput = {
+        ...baseInput,
+        platform: 'shopify' as any,
+      };
+      await expect(service.generateListing(input)).rejects.toThrow(UnsupportedPlatformError);
+    });
+
+    it('error message contains the unsupported platform name', async () => {
+      const service = createService(undefined);
+      const input: GenerateListingInput = {
+        ...baseInput,
+        platform: 'tiktok' as any,
+      };
+      await expect(service.generateListing(input)).rejects.toThrow(/tiktok/i);
     });
   });
 });

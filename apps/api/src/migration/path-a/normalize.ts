@@ -1,19 +1,18 @@
-import type { PathAExtractionResult, PathANormalizedRecord } from './types';
+import type { PathAExtractionResult, PathANormalizeContext, PathANormalizedRecord } from './types';
 import { shouldMarkNeedsManualReview } from './conflict-rules';
 
-const PATH_A_BRAND_ID = 'homtone' as const;
-const PATH_A_MARKET_CODE = 'US' as const;
-const PATH_A_PLATFORM_CODE = 'amazon' as const;
-
-export function normalizePathARecord(record: PathAExtractionResult): PathANormalizedRecord {
+export function normalizePathARecord(
+  record: PathAExtractionResult,
+  ctx: PathANormalizeContext,
+): PathANormalizedRecord {
   const needsManualReview = shouldMarkNeedsManualReview(record);
 
   return {
     runId: record.runId,
     sourceRecordId: record.sourceRecordId,
-    brandId: PATH_A_BRAND_ID,
-    marketCode: PATH_A_MARKET_CODE,
-    platformCode: PATH_A_PLATFORM_CODE,
+    brandId: ctx.brandId,
+    marketCode: ctx.marketCode,
+    platformCode: ctx.platformCode,
     sku: record.sku.trim(),
     asin: record.asin,
     title: record.title.trim(),
@@ -25,7 +24,7 @@ export function normalizePathARecord(record: PathAExtractionResult): PathANormal
     categoryName: record.categoryName,
     source: 'erp_import',
     needsManualReview,
-    dedupeKey: `${PATH_A_BRAND_ID}:${record.sku.trim()}`,
+    dedupeKey: `${ctx.brandId}:${ctx.platformCode}:${record.sku.trim()}`,
     lingxingUpdatedAt: record.lingxingUpdatedAt,
   };
 }

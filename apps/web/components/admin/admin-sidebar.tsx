@@ -11,6 +11,7 @@ import {
   Settings,
   HelpCircle,
   ChevronLeft,
+  Upload,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: '店铺运营',
     items: [{ icon: Store, label: '店铺绑定', href: '/shops', capability: 'shops:read' }],
+  },
+  {
+    title: '数据管理',
+    items: [{ icon: Upload, label: '数据导入', href: '/migration' }],
   },
   {
     title: '系统',

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios, { AxiosHeaders, InternalAxiosRequestConfig, AxiosError } from 'axios';
+import { AxiosHeaders, AxiosError } from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { HttpTransport } from '../src/client/http-transport';
 import { AuthManager } from '../src/client/auth-manager';
 import {
@@ -31,14 +32,16 @@ vi.mock('axios', async () => {
   };
 });
 
-function createAuthManagerMock() {
+function createAuthManagerMock(token = 'test-access-token') {
   return {
-    getToken: vi.fn().mockResolvedValue('test-token'),
+    getAccessToken: vi.fn().mockResolvedValue(token),
+    buildSign: vi.fn().mockReturnValue('mock-sign-base64=='),
+    appKeyValue: 'test-app-key',
   } as unknown as AuthManager;
 }
 
 const options = {
-  appKey: 'test-key',
+  appKey: 'test-app-key',
   appSecret: 'test-secret',
   baseUrl: 'https://api.lingxing.com',
   redisUrl: 'redis://localhost:6379',
@@ -50,40 +53,87 @@ describe('HttpTransport', () => {
   let requestInterceptor: (
     config: InternalAxiosRequestConfig,
   ) => Promise<InternalAxiosRequestConfig>;
+  let responseSuccessHandler: (response: unknown) => unknown;
   let responseErrorHandler: (error: AxiosError) => never;
 
   beforeEach(() => {
     vi.clearAllMocks();
     authManager = createAuthManagerMock();
-
     transport = new HttpTransport(options, authManager);
 
     requestInterceptor = mockRequestInterceptorUse.mock.calls[0][0];
+    responseSuccessHandler = mockResponseInterceptorUse.mock.calls[0][0];
     responseErrorHandler = mockResponseInterceptorUse.mock.calls[0][1];
   });
 
-  it('automatically includes Authorization header', async () => {
-    const config = { headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
+  it('injects access_token, app_key, timestamp, and sign into request params', async () => {
+    const config = {
+      headers: new AxiosHeaders(),
+      params: {},
+      method: 'get',
+    } as InternalAxiosRequestConfig;
     const result = await requestInterceptor(config);
-    expect(result.headers.get('Authorization')).toBe('Bearer test-token');
-    expect(
-      (authManager as unknown as { getToken: ReturnType<typeof vi.fn> }).getToken,
-    ).toHaveBeenCalled();
+    expect(result.params).toMatchObject({
+      access_token: 'test-access-token',
+      app_key: 'test-app-key',
+      sign: 'mock-sign-base64==',
+    });
+    expect(result.params.timestamp).toBeTruthy();
   });
 
-  it('successful GET request returns data', async () => {
-    mockRequest.mockResolvedValueOnce({
-      data: { items: [1, 2, 3] },
-    });
+  it('includes existing query params alongside auth params', async () => {
+    const config = {
+      headers: new AxiosHeaders(),
+      params: { offset: 0, length: 20 },
+      method: 'get',
+    } as InternalAxiosRequestConfig;
+    const result = await requestInterceptor(config);
+    expect(result.params).toMatchObject({ offset: 0, length: 20, app_key: 'test-app-key' });
+  });
 
-    const result = await transport.request('GET', '/api/data');
-    expect(result).toEqual({ items: [1, 2, 3] });
-    expect(mockRequest).toHaveBeenCalledWith({
-      method: 'GET',
-      url: '/api/data',
-      params: undefined,
-      data: undefined,
-    });
+  it('calls getAccessToken on each request', async () => {
+    const config = {
+      headers: new AxiosHeaders(),
+      params: {},
+      method: 'get',
+    } as InternalAxiosRequestConfig;
+    await requestInterceptor(config);
+    expect(
+      (authManager as unknown as { getAccessToken: ReturnType<typeof vi.fn> }).getAccessToken,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it('includes body params in sign calculation for POST requests', async () => {
+    const config = {
+      headers: new AxiosHeaders(),
+      params: {},
+      method: 'post',
+      data: JSON.stringify({ name: 'kobe', age: 33 }),
+    } as InternalAxiosRequestConfig;
+    await requestInterceptor(config);
+    const buildSignCall = (authManager as unknown as { buildSign: ReturnType<typeof vi.fn> })
+      .buildSign.mock.calls[0][0];
+    expect(buildSignCall).toMatchObject({ name: 'kobe', age: 33 });
+  });
+
+  it('successful response passes through (code === 0)', () => {
+    const response = { data: { code: 0, data: [] } };
+    expect(responseSuccessHandler(response)).toBe(response);
+  });
+
+  it('successful response passes through (code === "0")', () => {
+    const response = { data: { code: '0', data: [] } };
+    expect(responseSuccessHandler(response)).toBe(response);
+  });
+
+  it('successful response passes through (code === 200)', () => {
+    const response = { data: { code: 200, data: [] } };
+    expect(responseSuccessHandler(response)).toBe(response);
+  });
+
+  it('throws BusinessError for Lingxing business error (HTTP 200 with non-zero code)', () => {
+    const response = { data: { code: '3001001', message: 'missing query param' } };
+    expect(() => responseSuccessHandler(response)).toThrow(BusinessError);
   });
 
   it('maps HTTP 401 to AuthFailedError', () => {
@@ -92,7 +142,6 @@ describe('HttpTransport', () => {
       isAxiosError: true,
       response: { status: 401, data: { msg: 'Invalid token' } },
     } as unknown as AxiosError;
-
     expect(() => responseErrorHandler(error)).toThrow(AuthFailedError);
   });
 
@@ -102,7 +151,6 @@ describe('HttpTransport', () => {
       isAxiosError: true,
       response: { status: 429, data: { msg: 'Rate limited' } },
     } as unknown as AxiosError;
-
     expect(() => responseErrorHandler(error)).toThrow(RateLimitedError);
   });
 
@@ -112,7 +160,6 @@ describe('HttpTransport', () => {
       isAxiosError: true,
       response: { status: 400, data: { msg: 'Invalid params' } },
     } as unknown as AxiosError;
-
     expect(() => responseErrorHandler(error)).toThrow(BusinessError);
   });
 
@@ -122,7 +169,6 @@ describe('HttpTransport', () => {
       isAxiosError: true,
       response: undefined,
     } as unknown as AxiosError;
-
     expect(() => responseErrorHandler(error)).toThrow(NetworkError);
   });
 
@@ -132,7 +178,6 @@ describe('HttpTransport', () => {
       isAxiosError: true,
       response: { status: 500, data: { msg: 'Server error' } },
     } as unknown as AxiosError;
-
     try {
       responseErrorHandler(error);
       expect.unreachable('Should have thrown');

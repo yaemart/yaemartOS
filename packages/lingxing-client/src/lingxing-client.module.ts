@@ -22,7 +22,14 @@ export class LingxingClientModule {
         },
         {
           provide: REDIS_CLIENT,
-          useFactory: () => new Redis(options.redisUrl),
+          useFactory: () =>
+            new Redis(options.redisUrl, {
+              // Prevent commands from hanging indefinitely on connection drops
+              commandTimeout: 5000,
+              connectTimeout: 10000,
+              maxRetriesPerRequest: 3,
+              enableOfflineQueue: true,
+            }),
         },
         AuthManager,
         HttpTransport,

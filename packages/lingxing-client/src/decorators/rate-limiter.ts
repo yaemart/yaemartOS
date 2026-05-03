@@ -52,7 +52,13 @@ export class RateLimiter {
 
     while (waited <= this.maxWaitMs) {
       const now = Date.now();
-      const result = await this.redis.eval(LUA_TOKEN_BUCKET, 1, key, this.rps, now);
+      let result: unknown;
+      try {
+        result = await this.redis.eval(LUA_TOKEN_BUCKET, 1, key, this.rps, now);
+      } catch {
+        // Redis unavailable — degrade gracefully and allow the request
+        return;
+      }
 
       if (result === 1) {
         return;

@@ -40,6 +40,25 @@ type Paged<T> = {
   pageSize: number;
 };
 
+export type ListingMatrixEntry = {
+  id: string;
+  title: string | null;
+  platformCode: string;
+  platformName: string;
+  shopName: string;
+  trafficStrategy: string;
+  isPrimary: boolean;
+  status: string;
+  language: string;
+};
+
+export type ListingMatrixResult = {
+  listings: ListingMatrixEntry[];
+  similarityMatrix: Record<string, Record<string, number>>;
+  strategyDistribution: Record<string, number>;
+  salesAvailableFrom: 'S4';
+};
+
 function authHeaders(accessToken: string, brand?: string): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
@@ -150,6 +169,26 @@ export async function activateVersion(
     accessToken,
     { method: 'PATCH', brand },
   );
+}
+
+export async function getListingMatrix(
+  accessToken: string,
+  productId: string,
+  brand?: string,
+  signal?: AbortSignal,
+): Promise<ListingMatrixResult> {
+  const res = await fetch(
+    `${API_BASE}/listings/matrix?productId=${encodeURIComponent(productId)}`,
+    {
+      headers: authHeaders(accessToken, brand),
+      cache: 'no-store',
+      signal,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`/listings/matrix failed: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function generateListingDraft(

@@ -48,6 +48,7 @@ enum PlatformCode {
   walmart
   shopify
   tiktok
+  wayfair
 
   @@schema("public")
 }
@@ -444,5 +445,23 @@ model ListingVersion {
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([listingId, versionNumber])
+  @@schema("public")
+}
+
+/// Persistent key-value store for runtime-configurable system settings.
+/// Categories: feature_flag | ai_routing | ai_budget
+/// Keys are namespaced: e.g. "feature_flag.LISTING_AI", "feature_flag.LISTING_AI.homtone",
+///   "ai_routing.listing.en", "ai_budget.gemini_monthly_usd"
+/// Env-var overrides still take lowest priority after DB values.
+model SystemConfig {
+  id        String   @id @default(cuid())
+  category  String
+  key       String   @unique
+  value     String
+  label     String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@index([category])
   @@schema("public")
 }

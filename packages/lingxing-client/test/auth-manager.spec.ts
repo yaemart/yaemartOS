@@ -1,163 +1,189 @@
+import { createHash, createCipheriv } from 'crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios from 'axios';
 import { AuthManager } from '../src/client/auth-manager';
-import { AuthFailedError, NetworkError } from '../src/errors/lingxing-error';
-import authResponse from './fixtures/auth-response.json';
+import { AuthFailedError } from '../src/errors/lingxing-error';
 
-vi.mock('axios', () => {
-  const fn = vi.fn();
-  return {
-    default: {
-      post: fn,
-      isAxiosError: (e: unknown) =>
-        e instanceof Error &&
-        'isAxiosError' in e &&
-        (e as Record<string, unknown>).isAxiosError === true,
-    },
-  };
-});
+const APP_KEY = 'ak_69Tb7kBYdZsP4';
+const APP_SECRET = 'ZRt5YKRh0yr5sUnloZkWoQ==';
+const FAKE_TOKEN = 'test-access-token-uuid';
+const MOCK_EXPIRES = 7199;
 
-function createRedisMock() {
+function makeRedisMock(cachedToken: string | null = null) {
   return {
-    get: vi.fn().mockResolvedValue(null),
+    get: vi.fn().mockResolvedValue(cachedToken),
     set: vi.fn().mockResolvedValue('OK'),
     del: vi.fn().mockResolvedValue(1),
   };
 }
 
-function createOptions() {
-  return {
-    appKey: 'test-key',
-    appSecret: 'test-secret',
-    baseUrl: 'https://api.lingxing.com',
+vi.mock('axios', () => ({
+  default: {
+    post: vi.fn().mockResolvedValue({
+      data: {
+        code: '200',
+        data: { access_token: 'test-access-token-uuid', refresh_token: 'rt', expires_in: 7199 },
+      },
+    }),
+  },
+}));
+
+function createManager(appKey = APP_KEY, appSecret = APP_SECRET, redisMock = makeRedisMock()) {
+  const options = {
+    appKey,
+    appSecret,
+    baseUrl: 'https://openapi.lingxing.com',
     redisUrl: 'redis://localhost:6379',
   };
+  return new AuthManager(options as never, redisMock as never);
 }
 
-describe('AuthManager', () => {
-  let redis: ReturnType<typeof createRedisMock>;
-  let manager: AuthManager;
-  const options = createOptions();
-
-  beforeEach(() => {
-    redis = createRedisMock();
-    manager = new AuthManager(options, redis as never);
-    vi.clearAllMocks();
+describe('AuthManager.buildSign', () => {
+  it('produces a 64-char Base64 string for 3 fixed params', () => {
+    const manager = createManager();
+    const sign = manager.buildSign({
+      access_token: FAKE_TOKEN,
+      app_key: APP_KEY,
+      timestamp: '1700000000',
+    });
+    expect(sign).toHaveLength(64);
+    expect(() => Buffer.from(sign, 'base64')).not.toThrow();
   });
 
+  it('sorts params by ASCII key order before hashing', () => {
+    const manager = createManager();
+    // build expected sign manually
+    const params = { app_key: APP_KEY, access_token: FAKE_TOKEN, timestamp: '1700000000' };
+    const sorted = Object.keys(params)
+      .sort()
+      .map((k) => `${k}=${params[k as keyof typeof params]}`)
+      .join('&');
+    const md5 = createHash('md5').update(sorted).digest('hex').toUpperCase();
+    const keyBuf = Buffer.alloc(16, 0);
+    Buffer.from(APP_KEY).copy(keyBuf, 0, 0, Math.min(APP_KEY.length, 16));
+    const cipher = createCipheriv('aes-128-ecb', keyBuf, null);
+    const expected = Buffer.concat([
+      cipher.update(Buffer.from(md5, 'utf8')),
+      cipher.final(),
+    ]).toString('base64');
+
+    expect(manager.buildSign(params)).toBe(expected);
+  });
+
+  it('excludes empty-string values from sign', () => {
+    const manager = createManager();
+    const s1 = manager.buildSign({
+      app_key: APP_KEY,
+      access_token: FAKE_TOKEN,
+      timestamp: '1700000000',
+    });
+    const s2 = manager.buildSign({
+      app_key: APP_KEY,
+      access_token: FAKE_TOKEN,
+      timestamp: '1700000000',
+      empty: '',
+    });
+    expect(s1).toBe(s2);
+  });
+
+  it('includes null values in sign', () => {
+    const manager = createManager();
+    const s1 = manager.buildSign({ app_key: APP_KEY, timestamp: '1700000000' });
+    const s2 = manager.buildSign({
+      app_key: APP_KEY,
+      timestamp: '1700000000',
+      nullish: null as unknown as string,
+    });
+    // null gets included, so they SHOULD differ (null !== undefined/empty)
+    // Actually null values: "value为null会参与生成签名" - so nullish=null IS included
+    expect(s1).not.toBe(s2);
+  });
+
+  it('different params produce different signs', () => {
+    const manager = createManager();
+    const s1 = manager.buildSign({
+      access_token: FAKE_TOKEN,
+      app_key: APP_KEY,
+      timestamp: '1700000000',
+    });
+    const s2 = manager.buildSign({
+      access_token: FAKE_TOKEN,
+      app_key: APP_KEY,
+      timestamp: '1700000001',
+    });
+    expect(s1).not.toBe(s2);
+  });
+});
+
+describe('AuthManager.getAccessToken', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('fetches token from API on first call, stores in Redis, and returns it', async () => {
-    (axios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: authResponse });
-
-    const token = await manager.getToken();
-
-    expect(token).toBe('mock-token-abc123');
-    expect(axios.post).toHaveBeenCalledWith('https://api.lingxing.com/api/passport/login', {
-      appId: 'test-key',
-      appSecret: 'test-secret',
-    });
-    expect(redis.set).toHaveBeenCalledWith('lingxing:token', 'mock-token-abc123', 'EX', 6900);
-  });
-
-  it('returns cached token from Redis without API call', async () => {
-    redis.get.mockResolvedValueOnce('cached-token');
-
-    const token = await manager.getToken();
-
+  it('returns cached token from Redis without fetching new one', async () => {
+    const redis = makeRedisMock('cached-token');
+    const manager = createManager(APP_KEY, APP_SECRET, redis);
+    const token = await manager.getAccessToken();
     expect(token).toBe('cached-token');
-    expect(axios.post).not.toHaveBeenCalled();
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
-  it('auto-refreshes when token expires', async () => {
-    redis.get.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    redis.set.mockResolvedValueOnce('OK').mockResolvedValueOnce('OK').mockResolvedValueOnce('OK');
-
-    (axios.post as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ data: authResponse })
-      .mockResolvedValueOnce({
-        data: {
-          code: 0,
-          msg: 'success',
-          data: { access_token: 'refreshed-token', expires_in: 7200 },
-        },
-      });
-
-    const token1 = await manager.getToken();
-    expect(token1).toBe('mock-token-abc123');
-
-    const token2 = await manager.getToken();
-    expect(token2).toBe('refreshed-token');
+  it('fetches new token when cache is empty', async () => {
+    const redis = makeRedisMock(null);
+    redis.set.mockResolvedValueOnce('OK'); // lock acquired
+    const manager = createManager(APP_KEY, APP_SECRET, redis);
+    const token = await manager.getAccessToken();
+    expect(token).toBe(FAKE_TOKEN);
+    expect(redis.set).toHaveBeenCalledWith(
+      'lingxing:access_token',
+      FAKE_TOKEN,
+      'EX',
+      MOCK_EXPIRES - 60,
+    );
   });
 
-  it('only one caller refreshes via distributed lock; others wait for token', async () => {
-    const lockRedis = createRedisMock();
+  it('throws AuthFailedError when lock is held for too long (max retries exceeded)', async () => {
+    // Redis never grants the lock (set NX always returns null) and cache stays empty
+    const redis = makeRedisMock(null);
+    redis.set.mockResolvedValue(null); // lock always held by another process
 
-    lockRedis.get.mockResolvedValue(null);
+    vi.useFakeTimers();
+    const manager = createManager(APP_KEY, APP_SECRET, redis);
 
-    lockRedis.set
-      .mockResolvedValueOnce('OK')
-      .mockResolvedValueOnce('OK')
-      .mockResolvedValueOnce(null);
+    const promise = manager.getAccessToken();
+    // advance timers past all retries (20 × 500ms = 10s)
+    await vi.runAllTimersAsync();
 
-    let resolvePost!: (value: unknown) => void;
-    const postPromise = new Promise((resolve) => {
-      resolvePost = resolve;
+    await expect(promise).rejects.toBeInstanceOf(AuthFailedError);
+    vi.useRealTimers();
+  });
+
+  it('throws AuthFailedError when token API returns a business error code', async () => {
+    const redis = makeRedisMock(null);
+    redis.set.mockResolvedValueOnce('OK'); // lock acquired
+
+    vi.spyOn(axios, 'post').mockResolvedValueOnce({
+      data: { code: '1001', message: 'invalid appId or appSecret', data: null },
     });
-    (axios.post as ReturnType<typeof vi.fn>).mockReturnValue(postPromise);
 
-    const lockManager = new AuthManager(options, lockRedis as never);
-
-    const p1 = lockManager.getToken();
-
-    lockRedis.get.mockResolvedValueOnce(null);
-    lockRedis.set.mockResolvedValueOnce(null);
-    lockRedis.get.mockResolvedValueOnce('mock-token-abc123');
-
-    const p2 = lockManager.getToken();
-
-    resolvePost({ data: authResponse });
-
-    const [t1, t2] = await Promise.all([p1, p2]);
-    expect(t1).toBe('mock-token-abc123');
-    expect(t2).toBe('mock-token-abc123');
+    const manager = createManager(APP_KEY, APP_SECRET, redis);
+    await expect(manager.getAccessToken()).rejects.toBeInstanceOf(AuthFailedError);
   });
 
-  it('throws AuthFailedError when API returns 401', async () => {
-    const axiosError = new Error('Unauthorized') as Error & {
-      isAxiosError: boolean;
-      response: { status: number };
-    };
-    axiosError.isAxiosError = true;
-    axiosError.response = { status: 401 };
-    (axios.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(axiosError);
+  it('throws AuthFailedError when token API returns null data.data', async () => {
+    const redis = makeRedisMock(null);
+    redis.set.mockResolvedValueOnce('OK');
 
-    await expect(manager.getToken()).rejects.toThrow(AuthFailedError);
+    vi.spyOn(axios, 'post').mockResolvedValueOnce({
+      data: { code: 0, data: null },
+    });
+
+    const manager = createManager(APP_KEY, APP_SECRET, redis);
+    await expect(manager.getAccessToken()).rejects.toBeInstanceOf(AuthFailedError);
   });
 
-  it('throws AuthFailedError after 3 consecutive failures', async () => {
-    const error = new Error('Server error');
-    (axios.post as ReturnType<typeof vi.fn>)
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error);
-
-    await expect(manager.getToken()).rejects.toThrow(Error);
-    await expect(manager.getToken()).rejects.toThrow(Error);
-    await expect(manager.getToken()).rejects.toThrow(AuthFailedError);
-  });
-
-  it('throws NetworkError on network timeout', async () => {
-    const axiosError = new Error('timeout of 5000ms exceeded') as Error & {
-      isAxiosError: boolean;
-      response: undefined;
-    };
-    axiosError.isAxiosError = true;
-    axiosError.response = undefined;
-    (axios.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(axiosError);
-
-    await expect(manager.getToken()).rejects.toThrow(NetworkError);
+  it('appKeyValue getter returns the configured appKey', () => {
+    const manager = createManager('my-app-key');
+    expect(manager.appKeyValue).toBe('my-app-key');
   });
 });

@@ -7,12 +7,23 @@ import {
 import { ListingStatus, TrafficStrategy, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
+import { EmbeddingService } from '../ai/embedding.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
 type Actor = {
   id?: string;
   brandId?: string;
+};
+
+/** Auditable field snapshot — excludes large text fields (bullets/description) to keep metadata compact. */
+type ListingSnapshot = {
+  id: string;
+  status: string;
+  title: string | null;
+  isPrimary: boolean;
+  trafficStrategy: string;
+  updatedAt: Date;
 };
 
 type ListListingsQuery = {
@@ -41,6 +52,7 @@ export class ListingService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly auditService: AuditService,
+    private readonly embeddingService: EmbeddingService,
   ) {}
 
   private get prisma() {
@@ -79,6 +91,7 @@ export class ListingService {
       where: { id },
       include: {
         product: true,
+        platform: { select: { code: true } },
         versions: { orderBy: { versionNumber: 'desc' } },
       },
     });
@@ -125,7 +138,12 @@ export class ListingService {
         action: 'listing.create',
         entity: 'Listing',
         entityId: listing.id,
-        metadata: { productId: input.productId, brandId: input.brandId },
+        metadata: {
+          before: null,
+          after: this.snapshotListing(listing),
+          productId: input.productId,
+          brandId: input.brandId,
+        },
       });
 
       return this.getById(listing.id);
@@ -136,6 +154,7 @@ export class ListingService {
 
   async update(id: string, input: UpdateListingDto, actor?: Actor) {
     const listing = await this.assertExists(id);
+    const before = this.snapshotListing(listing);
 
     if (input.status !== undefined) {
       const allowed = ALLOWED_TRANSITIONS[listing.status] ?? [];
@@ -145,6 +164,8 @@ export class ListingService {
         );
       }
     }
+
+    let demotedIds: string[] = [];
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.listing.update({
@@ -163,7 +184,7 @@ export class ListingService {
       });
 
       if (input.isPrimary === true) {
-        await this.demoteOtherPrimaries(tx, id, {
+        demotedIds = await this.demoteOtherPrimaries(tx, id, {
           productId: listing.productId,
           brandId: listing.brandId,
           marketId: listing.marketId,
@@ -182,7 +203,12 @@ export class ListingService {
       action: 'listing.update',
       entity: 'Listing',
       entityId: id,
-      metadata: input,
+      metadata: {
+        before,
+        after: this.snapshotListing(updated),
+        changedFields: Object.keys(input),
+        ...(demotedIds.length > 0 ? { demotedIds } : {}),
+      },
     });
 
     return updated;
@@ -195,6 +221,7 @@ export class ListingService {
       throw new BadRequestException('Only archived listings can be deleted');
     }
 
+    const before = this.snapshotListing(listing);
     await this.prisma.listing.delete({ where: { id } });
 
     await this.auditService.logWrite({
@@ -203,9 +230,120 @@ export class ListingService {
       action: 'listing.delete',
       entity: 'Listing',
       entityId: id,
+      metadata: { before, after: null },
     });
 
     return { id, deleted: true };
+  }
+
+  async getMatrix(productId: string, brandId: string) {
+    const listings = await this.prisma.listing.findMany({
+      where: { productId, brandId, status: { not: ListingStatus.archived } },
+      include: {
+        platform: { select: { code: true, name: true } },
+        shop: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const items = listings.filter((l) => !!l.title).map((l) => ({ id: l.id, text: l.title! }));
+
+    const similarityMatrix =
+      items.length >= 2 ? await this.embeddingService.pairwiseSimilarity(items) : {};
+
+    const strategyDistribution = listings.reduce<Record<string, number>>((acc, l) => {
+      acc[l.trafficStrategy] = (acc[l.trafficStrategy] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      listings: listings.map((l) => ({
+        id: l.id,
+        title: l.title,
+        platformCode: l.platform.code,
+        platformName: l.platform.name,
+        shopName: l.shop.name,
+        trafficStrategy: l.trafficStrategy,
+        isPrimary: l.isPrimary,
+        status: l.status,
+        language: l.language,
+      })),
+      similarityMatrix,
+      strategyDistribution,
+      salesAvailableFrom: 'S4' as const,
+    };
+  }
+
+  async resolvePlatformId(platformCode: string): Promise<string> {
+    const platform = await this.prisma.platform.findUnique({
+      where: { code: platformCode as any },
+      select: { id: true },
+    });
+    if (!platform) {
+      throw new NotFoundException(`Platform not found: ${platformCode}`);
+    }
+    return platform.id;
+  }
+
+  /**
+   * Finds an existing draft Listing for the given scope, or creates one.
+   * Used by batch-generate to avoid duplicate records.
+   */
+  async findOrCreateDraft(input: {
+    productId: string;
+    brandId: string;
+    marketId: string;
+    platformId: string;
+    shopId: string;
+    language: string;
+    platformListingId: string;
+  }): Promise<{ id: string; brandId: string; language: string; isNew: boolean }> {
+    const existing = await this.prisma.listing.findFirst({
+      where: {
+        productId: input.productId,
+        shopId: input.shopId,
+        platformId: input.platformId,
+        language: input.language as any,
+      },
+      select: { id: true, brandId: true, language: true },
+    });
+
+    if (existing) {
+      return { ...existing, isNew: false };
+    }
+
+    const created = await this.prisma.listing.create({
+      data: {
+        productId: input.productId,
+        brandId: input.brandId,
+        marketId: input.marketId,
+        platformId: input.platformId,
+        shopId: input.shopId,
+        language: input.language as any,
+        platformListingId: input.platformListingId,
+        isPrimary: false,
+        trafficStrategy: TrafficStrategy.primary,
+      },
+      select: { id: true, brandId: true, language: true },
+    });
+
+    return { ...created, isNew: true };
+  }
+
+  private snapshotListing(
+    listing: Pick<
+      ListingSnapshot,
+      'id' | 'status' | 'title' | 'isPrimary' | 'trafficStrategy' | 'updatedAt'
+    >,
+  ): ListingSnapshot {
+    return {
+      id: listing.id,
+      status: listing.status,
+      title: listing.title,
+      isPrimary: listing.isPrimary,
+      trafficStrategy: listing.trafficStrategy,
+      updatedAt: listing.updatedAt,
+    };
   }
 
   private async assertExists(id: string) {
@@ -227,20 +365,23 @@ export class ListingService {
       shopId: string;
       language: string;
     },
-  ) {
-    await tx.listing.updateMany({
-      where: {
-        id: { not: excludeId },
-        productId: scope.productId,
-        brandId: scope.brandId,
-        marketId: scope.marketId,
-        platformId: scope.platformId,
-        shopId: scope.shopId,
-        language: scope.language as any,
-        isPrimary: true,
-      },
-      data: { isPrimary: false },
-    });
+  ): Promise<string[]> {
+    const where = {
+      id: { not: excludeId },
+      productId: scope.productId,
+      brandId: scope.brandId,
+      marketId: scope.marketId,
+      platformId: scope.platformId,
+      shopId: scope.shopId,
+      language: scope.language as any,
+      isPrimary: true,
+    };
+
+    const toBedemoted = await tx.listing.findMany({ where, select: { id: true } });
+    if (toBedemoted.length > 0) {
+      await tx.listing.updateMany({ where, data: { isPrimary: false } });
+    }
+    return toBedemoted.map((l) => l.id);
   }
 
   private rethrowConflict(error: unknown, fallback: string): never {

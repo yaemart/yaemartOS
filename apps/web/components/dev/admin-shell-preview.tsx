@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter, useParams } from 'next/navigation';
 import {
   LayoutDashboard,
   Package,
@@ -11,26 +12,31 @@ import {
   GraduationCap,
   Settings,
   Shield,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBrand } from '@/providers/brand-provider';
 import { BrandSwitcher } from '@/components/listing/brand-switcher';
 
 const SIDEBAR_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard', active: true },
-  { icon: Package, label: '产品中心' },
-  { icon: FileText, label: 'Listing 管理' },
-  { icon: ShoppingCart, label: '订单' },
-  { icon: Warehouse, label: '库存' },
-  { icon: Megaphone, label: '广告' },
-  { icon: Users, label: '客服/工单' },
-  { icon: GraduationCap, label: '培训' },
-  { icon: Settings, label: '系统设置' },
-  { icon: Shield, label: 'IAM 策略' },
+  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', active: true },
+  { icon: Package, label: '产品中心', href: '/products' },
+  { icon: FileText, label: 'Listing 管理', href: '/listings' },
+  { icon: ShoppingCart, label: '订单', href: null },
+  { icon: Warehouse, label: '库存', href: null },
+  { icon: Megaphone, label: '广告', href: null },
+  { icon: Users, label: '客服/工单', href: null },
+  { icon: GraduationCap, label: '培训', href: null },
+  { icon: Upload, label: '数据导入', href: '/migration' },
+  { icon: Settings, label: '系统设置', href: null },
+  { icon: Shield, label: 'IAM 策略', href: null },
 ];
 
 export function AdminShell() {
   const { brand } = useBrand();
+  const router = useRouter();
+  const params = useParams<{ locale?: string }>();
+  const locale = params?.locale ?? 'en';
 
   return (
     <div className="flex h-full min-h-screen">
@@ -45,11 +51,13 @@ export function AdminShell() {
             return (
               <button
                 key={item.label}
+                onClick={() => item.href && router.push(`/${locale}${item.href}`)}
                 className={cn(
                   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
                   item.active
                     ? 'bg-brand-primary/10 text-brand-primary font-medium'
                     : 'text-brand-text-secondary hover:bg-zinc-100 hover:text-brand-text',
+                  item.href ? 'cursor-pointer' : 'cursor-default opacity-50',
                 )}
               >
                 <Icon className="h-4 w-4" />
