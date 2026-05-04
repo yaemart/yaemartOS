@@ -102,6 +102,15 @@ enum ProductContentStatus {
   @@schema("public")
 }
 
+enum AdType {
+  sp
+  sd
+  sb
+  walmart_sp
+
+  @@schema("public")
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -395,11 +404,12 @@ model Shop {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  brand    Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  market   Market        @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  platform Platform      @relation(fields: [platformId], references: [id], onDelete: Cascade)
-  binding  ShopBinding?
-  listings Listing[]
+  brand        Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  market       Market         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  platform     Platform       @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  binding      ShopBinding?
+  listings     Listing[]
+  adDailyStats AdDailyStat[]
 
   @@unique([platformId, externalId])
   @@schema("public")
@@ -417,6 +427,33 @@ model ShopBinding {
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
+  @@schema("public")
+}
+
+/// Daily advertising metrics snapshot synced from Lingxing ERP.
+/// One row per shop × date × adType × campaign; supports idempotent upserts.
+model AdDailyStat {
+  id           String   @id @default(cuid())
+  shopId       String
+  date         DateTime @db.Date
+  adType       AdType
+  campaignId   String
+  campaignName String?
+  spend        Decimal  @default(0) @db.Decimal(12, 6)
+  sales        Decimal  @default(0) @db.Decimal(12, 6)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  orders       Int      @default(0)
+  syncedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, date, adType, campaignId])
+  @@index([shopId, date, adType])
+  @@index([shopId, date])
+  @@index([date])
   @@schema("public")
 }
 

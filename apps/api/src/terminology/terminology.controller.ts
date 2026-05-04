@@ -31,6 +31,12 @@ export class TerminologyController {
     return this.service.findByBrandAndLocale(brandId, locale);
   }
 
+  @Get(':id')
+  @RequirePolicy({ obj: 'terminology', act: 'read' })
+  findOne(@Param('id') id: string) {
+    return this.service.findById(id);
+  }
+
   @Post()
   @RequirePolicy({ obj: 'terminology', act: 'write' })
   create(@Body() dto: CreateTerminologyDto) {

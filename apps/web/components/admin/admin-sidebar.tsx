@@ -12,6 +12,7 @@ import {
   HelpCircle,
   ChevronLeft,
   Upload,
+  BarChart2,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: '数据管理',
-    items: [{ icon: Upload, label: '数据导入', href: '/migration' }],
+    items: [
+      { icon: Upload, label: '数据导入', href: '/migration' },
+      { icon: BarChart2, label: '广告看板', href: '/ads/dashboard', capability: 'ads:read' },
+    ],
   },
   {
     title: '系统',

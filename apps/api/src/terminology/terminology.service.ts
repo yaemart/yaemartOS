@@ -29,6 +29,14 @@ export class TerminologyService {
     });
   }
 
+  async findById(id: string) {
+    const entry = await this.prisma.terminologyEntry.findUnique({ where: { id } });
+    if (!entry) {
+      throw new NotFoundException(`Terminology entry ${id} not found`);
+    }
+    return entry;
+  }
+
   async create(dto: CreateTerminologyDto) {
     const existing = await this.prisma.terminologyEntry.findUnique({
       where: {
