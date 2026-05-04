@@ -93,11 +93,26 @@ class SmokeError extends Error {
   }
 }
 
-function envOrDie(key: string): string {
+/**
+ * Read a required env, accumulating missing keys in `missing` instead of
+ * exiting on first failure. F-19 hotfix (W49 D2): the previous
+ * `envOrDie` first-failed straight to `process.exit(2)` without writing
+ * any stdout, leaving `smoke-output.json` empty in CI. Empty artifacts
+ * forced the Slack notify step into its jq-fallback banner ("could not
+ * parse smoke-output.json — see workflow artifact"), so on-call had to
+ * dig into stderr workflow logs to find which env var was missing.
+ *
+ * Now every required env is read up front. If any are missing, `main`
+ * calls `finalize(...exitCode=2)` once with hardFailures populated, so
+ * the artifact contains a parseable JSON report and Slack alerts can
+ * name the exact missing keys. F-19 is the twin of F-8 (both close
+ * silent-failure channels in the staging-smoke pipeline).
+ */
+function requireEnv(key: string, missing: string[]): string {
   const v = process.env[key];
   if (!v) {
-    process.stderr.write(`✗ Missing required env var: ${key}\n`);
-    process.exit(2);
+    missing.push(key);
+    return '';
   }
   return v;
 }
@@ -112,15 +127,34 @@ const TOOL_TRIGGER_PROMPT =
   'Show me my open warranty registrations and recent support tickets, please.';
 
 async function main(): Promise<void> {
-  const apiBase = envOrDie('STAGING_API_BASE').replace(/\/$/, '');
+  const startedAt = new Date().toISOString();
+
+  const missing: string[] = [];
+  const apiBase = requireEnv('STAGING_API_BASE', missing).replace(/\/$/, '');
   const brand = process.env['STAGING_BRAND'] ?? 'homtone';
-  const adminToken = envOrDie('STAGING_ADMIN_TOKEN');
+  const adminToken = requireEnv('STAGING_ADMIN_TOKEN', missing);
   const customerToken = process.env['STAGING_CUSTOMER_TOKEN'];
   const dashboardUrl = process.env['STAGING_DASHBOARD_URL'];
   const dashboardCookie = process.env['STAGING_DASHBOARD_COOKIE'];
   const timeoutMs = parseInt(process.env['STAGING_TIMEOUT_MS'] ?? '30000', 10);
 
-  const startedAt = new Date().toISOString();
+  // F-19 hotfix (W49 D2): write a parseable JSON report to stdout even
+  // on the config-missing early-exit path so artifact + Slack notify
+  // can show *which* env var(s) were missing.
+  if (missing.length > 0) {
+    return finalize(
+      [],
+      {},
+      missing.map((k) => `Missing required env: ${k}`),
+      [],
+      startedAt,
+      apiBase,
+      brand,
+      !!customerToken,
+      2,
+    );
+  }
+
   const steps: SmokeStep[] = [];
   const hardFailures: string[] = [];
   const softWarnings: string[] = [];

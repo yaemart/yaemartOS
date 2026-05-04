@@ -103,6 +103,85 @@ exit "$ec"        # ← 关键：让 step.outcome 反映真实 smoke 退出码
 
 ---
 
+## 1.5. F-19：smoke 早退路径不写 JSON — W49 D2 紧急 hotfix（已修 ✅）
+
+> **F-8 的孪生 bug**，由 F-8 hotfix 后的第 2 次 manual trigger 暴露并当晚一并清掉
+
+**位置**：`scripts/staging/smoke-chat-tool.ts` 的 `envOrDie()` first-fail 函数
+
+**Pre-fix 形态**：
+
+```ts
+function envOrDie(key: string): string {
+  const v = process.env[key];
+  if (!v) {
+    process.stderr.write(`✗ Missing required env var: ${key}\n`);
+    process.exit(2); // ← 立即退出，stdout 一字未写
+  }
+  return v;
+}
+```
+
+**真实影响**（W49 D2 hotfix #2 manual trigger 暴露）：
+
+secret 缺失时 smoke 走 `envOrDie` first-fail 路径，只把消息写 stderr 然后立即 `process.exit(2)`，没经过 `finalize()` 的 stdout JSON 输出。yml step 是 `pnpm --silent run smoke:chat-tool > smoke-output.json`，**stdout 重定向出来的文件就是 0 字节空文件**。
+
+连锁伤害：
+
+1. ✅ workflow 状态正确 ❌（F-8 hotfix 已修，不会再假绿）
+2. ⚠️ artifact 拿不到 hardFailures 列表 → 运维不知道**到底哪个 secret 缺**
+3. ⚠️ Slack notify step 的 jq 走 fallback 分支：`HARD="(could not parse smoke-output.json — see workflow artifact)"` → 通知文案缺关键诊断
+4. ⚠️ 跨平台诊断断链：人在 Slack 看不到原因，需要去 GitHub Actions 看 stderr log，再去下载 artifact 才发现是空的
+
+**Hotfix（W49 D2 已上线）**：
+
+```ts
+function requireEnv(key: string, missing: string[]): string {
+  const v = process.env[key];
+  if (!v) {
+    missing.push(key); // ← 收集所有缺失，不立即 exit
+    return '';
+  }
+  return v;
+}
+
+// main 开头：
+const missing: string[] = [];
+const apiBase = requireEnv('STAGING_API_BASE', missing).replace(/\/$/, '');
+const adminToken = requireEnv('STAGING_ADMIN_TOKEN', missing);
+// ... 其他 required envs ...
+
+if (missing.length > 0) {
+  return finalize(
+    [],
+    {},
+    missing.map((k) => `Missing required env: ${k}`),
+    [],
+    startedAt,
+    apiBase,
+    brand,
+    !!customerToken,
+    2, // exitCode = 2
+  );
+}
+```
+
+复用 `finalize()` 函数的 stdout JSON 写出逻辑，让 config-missing 路径与 happy-path 共用同一份 SmokeReport schema。**此外发现并顺手修了 dead test bug**：`scripts/staging/smoke-chat-tool.spec.ts` 因 `apps/api/vitest.config.ts` include 是相对 `apps/api/` cwd 的 `scripts/**`，未匹配仓库根 `scripts/staging/`，导致 W49 D1 当时写的 drift spec **从未在 CI 跑过**。修法：include 加 `'../../scripts/**/*.spec.ts'` 让根 scripts/ 下的 spec 也被 vitest 收集。
+
+**新增 drift 测试**（`smoke-chat-tool.spec.ts`）：4 条断言防回归 — `envOrDie` 函数不复存在 / `requireEnv(key, missing)` 签名存在 / missing-env 路径走 finalize(..., 2) / `process.exit(2)` 直接调用 = 0 处。
+
+**验收**（hotfix 后 manual trigger 验证 — 当晚 D2 22:30+ 完成或 D3 白天补做）：
+
+- [ ] 不配 secrets manual trigger：workflow ❌，artifact `smoke-output.json` 含 `{"exitCode": 2, "hardFailures": ["Missing required env: STAGING_API_BASE", ...]}`
+- [ ] 配齐 secrets manual trigger：workflow ✅，artifact 含 `{"exitCode": 0, "metricDeltas": {...}}`
+- [ ] Slack（如果 SLACK_WEBHOOK_URL 配了）通知文案含 hardFailures 具体内容，不再是 fallback banner
+
+**实际耗时**：~0.07 人日（10 分钟改源码 + 5 分钟新增 drift spec + 5 分钟 vitest config 修 dead test + 5 分钟文档同步）
+
+**Sprint impact**：F-19 不在原 backlog scope（D2 hotfix 期间发现），不影响方案 A 0.50d 容量。**Net hygiene-week 容量仍为 12 项 0.50d**（F-8 + F-19 已在 W49 D2 当晚清掉，没有挤占未来 sprint）。
+
+---
+
 ## 2. F-10：中文硬编码无 i18n
 
 **位置**：`apps/web/components/dashboard/chat-tool-activity.tsx`

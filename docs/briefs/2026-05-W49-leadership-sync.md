@@ -18,8 +18,13 @@
 > Institutional learning 沉淀至 [`docs/solutions/git-workflow/2026-05-04-stack-pr-orchestration.md`](../solutions/git-workflow/2026-05-04-stack-pr-orchestration.md)；执行 plan 见 [`docs/plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md`](../plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md)。
 
 > **W49 D2 22:30 hotfix — F-8 紧急升级 P0（`set +e` silent failure）** — Manual trigger 第 1 次 run（`Staging Smoke — Chat Tool #1`，brand=homtone）显示 25s ✅ Success，时长远低于真实 smoke 应有的 1-3min，触发深查发现 staging-smoke.yml 的 smoke step 末尾 `echo "exit_code=$?"` 让 `steps.smoke.outcome` 永远等于 `success`（echo 自身 exit 0 覆盖真实 smoke 退出码），workflow 永远绿、Slack 永不通知、cron 解锁判定彻底失效。
-> W49 D1 review 已记录此问题为 F-8（P2）排到卫生周；D2 manual trigger 暴露真实影响是 P0，**当晚 hotfix 直接 push 到 main**：smoke step 改为 `ec=$?; echo exit_code=$ec; exit "$ec"` 模式，让 step.outcome 反映真实 smoke 退出码，artifact upload / Slack notify / Fail job step 仍能跑（依靠 `continue-on-error: true`）。
-> 卫生周 backlog scope 同步从 13 项调整为 12 项（F-8 移出，节省 0.05d；方案 A 总额 0.50 人日正好达标）。**cron 解锁判定重置 — 待 hotfix 后第 2 次 manual trigger 验证才能真正解锁。**
+> W49 D1 review 已记录此问题为 F-8（P2）排到卫生周；D2 manual trigger 暴露真实影响是 P0，**当晚 hotfix 直接 push 到 main（commit `e3cb609`）**：smoke step 改为 `ec=$?; echo exit_code=$ec; exit "$ec"` 模式，让 step.outcome 反映真实 smoke 退出码，artifact upload / Slack notify / Fail job step 仍能跑（依靠 `continue-on-error: true`）。
+
+> **W49 D2 22:50 hotfix #2 — F-19 smoke 早退路径不写 stdout JSON（F-8 孪生 bug）** — F-8 hotfix 后第 2 次 manual trigger（`Staging Smoke — Chat Tool #2`，24s ❌ Failure）暴露 artifact `smoke-output.json` 是 0 字节空文件 —— smoke 脚本 `envOrDie()` first-fail 直接 `process.exit(2)`，stdout 一字未写，Slack notify step 的 jq 走 fallback banner，artifact 无 hardFailures 列表，运维诊断断链。
+> 同时 incidentally 发现 `scripts/staging/smoke-chat-tool.spec.ts` 因 `apps/api/vitest.config.ts` include 是相对 `apps/api/` cwd 的 `scripts/**`，**W49 D1 当时写的 drift spec 从未在 CI 跑过**（dead test bug）。
+> W49 D2 hotfix：（1）`envOrDie` → `requireEnv(key, missing)` collect-all 模式 + missing-env 路径调 `finalize(..., 2)` 复用 stdout JSON 输出；（2）`vitest.config.ts` include 加 `'../../scripts/**/*.spec.ts'` 救活 dead test；（3）新增 4 条 drift 断言防 envOrDie / first-fail 模式回归。
+
+> 卫生周 backlog scope 从 13 项调整为 12 项（F-8 移出，F-19 不入 scope —— 当晚一并清掉），方案 A 总额 0.50 人日不变。**cron 解锁判定重置 — 待 hotfix 后第 3 次 manual trigger（配齐 secrets）验证才能真正解锁。**
 
 ---
 
