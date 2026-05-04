@@ -1,7 +1,39 @@
-export default function DashboardPage() {
+import { requireAuth } from '@/lib/auth/route-guard';
+import { aggregateChatToolKpis, listMetrics } from '@/lib/api/metric-client';
+import { ChatToolActivity } from '@/components/dashboard/chat-tool-activity';
+
+const CHAT_KPI_LIMIT = 200;
+
+export default async function DashboardPage({ params }: { params: { locale: string } }) {
+  const guard = await requireAuth(params.locale);
+  if (guard.status !== 'authenticated') {
+    return null;
+  }
+
+  const token = guard.accessToken;
+
+  // Fan out the three KPI fetches in parallel; surface a soft "errored" state
+  // if any one fails so the rest of the dashboard still renders.
+  let chatToolErrored = false;
+  let chatToolSummary = null;
+  try {
+    const [invocations, errors, sessions] = await Promise.all([
+      listMetrics(token, { name: 'chat.tool.invocation_count', limit: CHAT_KPI_LIMIT }),
+      listMetrics(token, { name: 'chat.tool.error_count', limit: CHAT_KPI_LIMIT }),
+      listMetrics(token, { name: 'chat.session.with_tools_count', limit: CHAT_KPI_LIMIT }),
+    ]);
+    chatToolSummary = aggregateChatToolKpis({
+      invocationRecords: invocations.records,
+      errorRecords: errors.records,
+      sessionRecords: sessions.records,
+    });
+  } catch {
+    chatToolErrored = true;
+  }
+
   return (
-    <div>
-      <div className="mb-6">
+    <div className="space-y-8">
+      <div>
         <h1 className="text-xl font-semibold text-zinc-900">仪表盘</h1>
         <p className="mt-0.5 text-sm text-zinc-500">概览与数据一览</p>
       </div>
@@ -19,6 +51,8 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <ChatToolActivity summary={chatToolSummary} errored={chatToolErrored} />
     </div>
   );
 }

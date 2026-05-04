@@ -1,0 +1,155 @@
+name: Staging Smoke — Chat Tool
+
+# Hits real staging weekly to verify the W49 chat-tool KPI pipeline + admin
+# dashboard widget are alive. See:
+#   - scripts/staging/smoke-chat-tool.ts
+#   - docs/briefs/2026-05-W49-leadership-sync.md
+on:
+  schedule:
+    # Mondays 01:00 UTC = 09:00 Asia/Shanghai = 10:00 Asia/Tokyo
+    # GitHub cron may drift up to ~30 min on busy hours — that's acceptable
+    # for a weekly canary check (ops can also manually trigger).
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: 'Brand to smoke (homtone | spoonlemon | davivy | tysun)'
+        required: false
+        default: 'homtone'
+        type: choice
+        options:
+          - homtone
+          - spoonlemon
+          - davivy
+          - tysun
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per-brand serialisation — never cancel an in-flight smoke (cron and
+  # manual triggers should queue rather than clobber each other).
+  group: staging-smoke-chat-tool-${{ inputs.brand || 'homtone' }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Run chat-tool smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `continue-on-error: true` lets the workflow still upload artifacts
+      # and notify Slack even when the smoke script exits non-zero. The
+      # final "Fail job if smoke failed" step decides the workflow status.
+      - name: Run staging smoke
+        id: smoke
+        continue-on-error: true
+        env:
+          STAGING_API_BASE: ${{ secrets.STAGING_API_BASE }}
+          STAGING_BRAND: ${{ inputs.brand || 'homtone' }}
+          STAGING_ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+          STAGING_CUSTOMER_TOKEN: ${{ secrets.STAGING_CUSTOMER_TOKEN }}
+          STAGING_DASHBOARD_URL: ${{ secrets.STAGING_DASHBOARD_URL }}
+          STAGING_DASHBOARD_COOKIE: ${{ secrets.STAGING_DASHBOARD_COOKIE }}
+        run: |
+          # `pnpm --silent` suppresses the script-name banner so stdout is
+          # pure JSON for the Slack step to parse. Stderr (banner +
+          # warnings) flows naturally to the workflow log. We swallow the
+          # non-zero exit here (handled by `continue-on-error: true`) and
+          # surface it via the explicit "Fail job" step below.
+          set +e
+          pnpm --silent run smoke:chat-tool > smoke-output.json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-tool-smoke-${{ inputs.brand || 'homtone' }}-${{ github.run_id }}
+          path: |
+            smoke-output.json
+            docs/reports/staging-smoke/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      # Slack notification: parses the JSON report so the message includes
+      # human-readable hard failures + soft warnings, not just a run URL.
+      # Skips silently when SLACK_WEBHOOK_URL is unset (keeps the workflow
+      # usable in forks / freshly-cloned repos without secrets).
+      - name: Notify Slack on failure
+        if: steps.smoke.outcome != 'success'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BRAND: ${{ inputs.brand || 'homtone' }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping notification."
+            exit 0
+          fi
+
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+          # Best-effort JSON parse: jq is preinstalled on ubuntu-latest;
+          # if smoke-output.json is malformed (e.g. early crash), fall
+          # back to a generic banner so we still get notified.
+          if jq -e . smoke-output.json >/dev/null 2>&1; then
+            EXIT_CODE=$(jq -r '.exitCode // 1' smoke-output.json)
+            HARD=$(jq -r '.hardFailures // [] | join("\n• ")' smoke-output.json)
+            SOFT=$(jq -r '.softWarnings // [] | join("\n• ")' smoke-output.json)
+            DELTAS=$(jq -r '.metricDeltas // {} | to_entries | map("\(.key): Δ\(.value)") | join("\n• ")' smoke-output.json)
+          else
+            EXIT_CODE="?"
+            HARD="(could not parse smoke-output.json — see workflow artifact)"
+            SOFT=""
+            DELTAS=""
+          fi
+
+          # Slack JSON payload via jq -n to handle escaping safely.
+          PAYLOAD=$(jq -n \
+            --arg brand "$BRAND" \
+            --arg run_url "$RUN_URL" \
+            --arg exit_code "$EXIT_CODE" \
+            --arg hard "$HARD" \
+            --arg soft "$SOFT" \
+            --arg deltas "$DELTAS" \
+            '{
+              text: ":rotating_light: yaemartOS staging smoke FAILED",
+              blocks: [
+                { type: "header", text: { type: "plain_text", text: "🚨 chat-tool staging smoke FAILED" } },
+                { type: "section", fields: [
+                  { type: "mrkdwn", text: ("*Brand:* `" + $brand + "`") },
+                  { type: "mrkdwn", text: ("*Exit code:* `" + $exit_code + "`") }
+                ] },
+                ($hard | if . == "" then null else { type: "section", text: { type: "mrkdwn", text: ("*Hard failures:*\n• " + .) } } end),
+                ($deltas | if . == "" then null else { type: "section", text: { type: "mrkdwn", text: ("*Metric deltas:*\n• " + .) } } end),
+                ($soft | if . == "" then null else { type: "section", text: { type: "mrkdwn", text: ("*Soft warnings:*\n• " + .) } } end),
+                { type: "actions", elements: [
+                  { type: "button", text: { type: "plain_text", text: "View workflow run" }, url: $run_url }
+                ] }
+              ] | map(select(. != null))
+            }')
+
+          curl -fsS -X POST \
+            -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Fail job if smoke failed
+        if: steps.smoke.outcome != 'success'
+        run: |
+          echo "::error::Staging smoke reported non-zero exit. See artifact 'chat-tool-smoke-${{ inputs.brand || 'homtone' }}-${{ github.run_id }}' for the full JSON report."
+          exit 1
