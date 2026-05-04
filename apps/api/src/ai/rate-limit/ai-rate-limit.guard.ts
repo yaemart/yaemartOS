@@ -10,11 +10,34 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { randomUUID } from 'crypto';
 import type { Request } from 'express';
 import Redis from 'ioredis';
 import { AI_RATE_LIMIT_KEY, AiRateLimitOptions } from './ai-rate-limit.decorator';
 
 const WINDOW_SECONDS = 60;
+
+/**
+ * Atomic sliding-window CAS:
+ *   1. Trim entries outside the window.
+ *   2. Read current count.
+ *   3. If under limit: add the new entry + refresh TTL, return {1, count+1}.
+ *      Else: do not write, return {0, count}.
+ *
+ * Running as a single Lua script ensures rejected requests do not pollute the
+ * bucket and consume future quota.
+ */
+const CHECK_AND_ADD_LUA = `
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+local count = tonumber(redis.call('ZCARD', KEYS[1]))
+local limit = tonumber(ARGV[3])
+if count >= limit then
+  return {0, count}
+end
+redis.call('ZADD', KEYS[1], ARGV[2], ARGV[5])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
+return {1, count + 1}
+`;
 
 interface AuthenticatedRequest extends Request {
   user?: { sub?: string; userId?: string };
@@ -24,9 +47,9 @@ interface AuthenticatedRequest extends Request {
 /**
  * Per-(model × brand) sliding window rate limiter.
  *
- * Uses Redis sorted sets keyed by bucket; entries older than the window are
- * trimmed on every request and the resulting cardinality is compared against
- * the configured `requestsPerMinute`.
+ * Uses a Redis sorted set per bucket and a Lua script for atomic check-and-add.
+ * Rejected requests do not write to the bucket — preventing the "poisoned bucket"
+ * failure mode where 429s consume future window capacity.
  *
  * Fail-open: if Redis is unreachable, the guard logs a warning and allows the
  * request through rather than blocking AI calls due to infrastructure issues.
@@ -61,35 +84,75 @@ export class AiRateLimitGuard implements CanActivate, OnModuleDestroy {
     }
 
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const brandId = req.resolvedBrandId ?? req.user?.sub ?? req.user?.userId ?? 'anonymous';
-    const bucket = `ai_rl:${options.model}:${brandId}`;
+    const userId = req.user?.sub ?? req.user?.userId;
+    const brandId = req.resolvedBrandId ?? userId ?? 'anonymous';
+    const brandBucket = `ai_rl:${options.model}:${brandId}`;
     const now = Date.now();
     const windowStart = now - WINDOW_SECONDS * 1000;
 
+    // Resolve user-bucket policy. The user ceiling exists to prevent a
+    // multi-brand operator from stacking N × brand quota by rotating brands.
+    // Default: 2× the brand limit, so legitimate dual-brand work isn't blocked.
+    const userLimit =
+      options.userRequestsPerMinute === null
+        ? null
+        : (options.userRequestsPerMinute ?? options.requestsPerMinute * 2);
+    const userBucket =
+      userId && userLimit !== null && userId !== brandId
+        ? `ai_rl:${options.model}:user:${userId}`
+        : null;
+
+    const res = context.switchToHttp().getResponse();
+
     try {
-      const pipeline = this.redis.multi();
-      pipeline.zremrangebyscore(bucket, 0, windowStart);
-      pipeline.zadd(bucket, now, `${now}-${Math.random()}`);
-      pipeline.zcard(bucket);
-      pipeline.expire(bucket, WINDOW_SECONDS + 5);
-      const results = await pipeline.exec();
+      // Step 1: brand bucket — atomic check-and-add.
+      const brandResult = (await this.redis.eval(
+        CHECK_AND_ADD_LUA,
+        1,
+        brandBucket,
+        windowStart.toString(),
+        now.toString(),
+        options.requestsPerMinute.toString(),
+        (WINDOW_SECONDS + 5).toString(),
+        `${now}-${randomUUID()}`,
+      )) as [number, number];
+      const brandAllowed = Array.isArray(brandResult) ? Number(brandResult[0]) === 1 : true;
+      const brandCount = Array.isArray(brandResult) ? Number(brandResult[1]) : 0;
 
-      if (!results) {
-        return true;
-      }
-      const cardEntry = results[2];
-      const count = (Array.isArray(cardEntry) ? cardEntry[1] : 0) as number;
+      res.setHeader?.('X-RateLimit-Limit', options.requestsPerMinute);
+      res.setHeader?.('X-RateLimit-Remaining', Math.max(0, options.requestsPerMinute - brandCount));
 
-      if (count > options.requestsPerMinute) {
-        const retryAfter = WINDOW_SECONDS;
-        const res = context.switchToHttp().getResponse();
-        res.setHeader?.('X-RateLimit-Limit', options.requestsPerMinute);
-        res.setHeader?.('X-RateLimit-Remaining', 0);
-        res.setHeader?.('Retry-After', retryAfter);
+      if (!brandAllowed) {
+        res.setHeader?.('Retry-After', WINDOW_SECONDS);
         throw new HttpException(
-          `AI rate limit exceeded for ${options.model} (${options.requestsPerMinute}/min per brand). Retry in ${retryAfter}s.`,
+          `AI rate limit exceeded for ${options.model} (${options.requestsPerMinute}/min per brand). Retry in ${WINDOW_SECONDS}s.`,
           HttpStatus.TOO_MANY_REQUESTS,
         );
+      }
+
+      // Step 2: user bucket — only run when configured. We only get here when
+      // the brand bucket already admitted, so the worst case is a redundant
+      // brand-bucket member when the user bucket rejects. That cost is bounded
+      // (single member per window) and acceptable.
+      if (userBucket && userLimit !== null) {
+        const userResult = (await this.redis.eval(
+          CHECK_AND_ADD_LUA,
+          1,
+          userBucket,
+          windowStart.toString(),
+          now.toString(),
+          userLimit.toString(),
+          (WINDOW_SECONDS + 5).toString(),
+          `${now}-${randomUUID()}`,
+        )) as [number, number];
+        const userAllowed = Array.isArray(userResult) ? Number(userResult[0]) === 1 : true;
+        if (!userAllowed) {
+          res.setHeader?.('Retry-After', WINDOW_SECONDS);
+          throw new HttpException(
+            `AI rate limit exceeded for ${options.model} (${userLimit}/min per user across brands). Retry in ${WINDOW_SECONDS}s.`,
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
       }
 
       return true;
