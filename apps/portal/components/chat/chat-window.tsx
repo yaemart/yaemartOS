@@ -15,6 +15,22 @@ export interface ChatMessage {
   streaming?: boolean;
 }
 
+interface ActiveToolCall {
+  name: string;
+  startedAt: number;
+}
+
+const TOOL_LABEL_BY_NAME: Record<string, string> = {
+  listMyTickets: 'Looking up your tickets',
+  createCustomerTicket: 'Creating a support ticket',
+  addCustomerTicketMessage: 'Posting your reply',
+  listMyWarranties: 'Looking up your warranty registrations',
+  registerWarranty: 'Registering your warranty',
+  customerOrderLookup: 'Checking your order status',
+  listProductManuals: 'Finding product manuals',
+  getProductManual: 'Fetching the product manual',
+};
+
 interface ChatWindowProps {
   locale: string;
   accessToken?: string;
@@ -46,6 +62,13 @@ export function ChatWindow({
   const [isStreaming, setIsStreaming] = useState(false);
   const [isEscalated, setIsEscalated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Tools currently mid-execution. ADR-012 surfaces tool lifecycle through
+   * the SSE channel as `toolCall: { name, status }`. Started entries stay
+   * visible until the matching `completed` arrives, after which the row is
+   * removed in the same render pass to avoid jitter.
+   */
+  const [activeTools, setActiveTools] = useState<ActiveToolCall[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
 
@@ -76,7 +99,21 @@ export function ChatWindow({
         token?: string;
         done?: boolean;
         escalated?: boolean;
+        toolCall?: { name: string; status: 'started' | 'completed' };
       };
+
+      if (data.toolCall) {
+        const { name, status } = data.toolCall;
+        setActiveTools((prev) => {
+          if (status === 'started') {
+            if (prev.some((t) => t.name === name)) {
+              return prev;
+            }
+            return [...prev, { name, startedAt: Date.now() }];
+          }
+          return prev.filter((t) => t.name !== name);
+        });
+      }
 
       if (data.token) {
         setMessages((prev) => {
@@ -105,6 +142,7 @@ export function ChatWindow({
           return prev;
         });
         setIsStreaming(false);
+        setActiveTools([]);
         if (data.escalated) {
           setIsEscalated(true);
         }
@@ -186,6 +224,28 @@ export function ChatWindow({
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+        {activeTools.length > 0 && (
+          <ul
+            aria-live="polite"
+            className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs"
+            style={{
+              borderColor: 'var(--color-border, #e5e7eb)',
+              backgroundColor: 'var(--color-surface-muted, #f9fafb)',
+              color: 'var(--color-muted, #6b7280)',
+            }}
+          >
+            {activeTools.map((t) => (
+              <li key={t.name} className="flex items-center gap-2">
+                <span
+                  className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                  style={{ backgroundColor: 'var(--color-primary, #3b82f6)' }}
+                  aria-hidden
+                />
+                {TOOL_LABEL_BY_NAME[t.name] ?? `Calling ${t.name}`}…
+              </li>
+            ))}
+          </ul>
+        )}
         {isEscalated && (
           <div
             className="rounded-lg p-3 text-sm border"
