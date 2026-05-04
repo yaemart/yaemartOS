@@ -1153,6 +1153,97 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
     },
   },
 
+  // ── Ad Suggestions (AI-powered optimization with execution gate) ─────────
+  {
+    name: 'generateAdSuggestions',
+    description:
+      'Generate AI-powered advertising optimization suggestions for breaching campaigns (high ACOS or low CTR). Uses GLM-5 model. Returns a batchId and the count of suggestions persisted with `pending` status. Subject to AI rate limit (10/min per brand) and AD_SUGGESTION feature flag.',
+    method: 'POST',
+    endpoint: '/ads/suggestions/generate',
+    parameters: {
+      shopId: { type: 'string', description: 'The shop ID to analyze.', required: true },
+      startDate: {
+        type: 'string',
+        description: 'Optional start date (YYYY-MM-DD). Defaults to 30 days ago.',
+        required: false,
+      },
+      endDate: {
+        type: 'string',
+        description: 'Optional end date (YYYY-MM-DD). Defaults to today.',
+        required: false,
+      },
+    },
+  },
+  {
+    name: 'listAdSuggestions',
+    description:
+      'List AI-generated ad-optimization suggestions for the authenticated brand. Filter by shop and status (pending/accepted/rejected/executed/expired). Pending suggestions past `expiresAt` are projected as `expired` in responses.',
+    method: 'GET',
+    endpoint: '/ads/suggestions',
+    parameters: {
+      shopId: { type: 'string', description: 'Filter by shop ID.', required: false },
+      status: {
+        type: 'string',
+        description: 'Filter by status: pending | accepted | rejected | executed | expired',
+        required: false,
+      },
+      page: { type: 'number', description: 'Page number (default 1)', required: false },
+      limit: { type: 'number', description: 'Page size (default 50, max 200)', required: false },
+    },
+  },
+  {
+    name: 'getAdSuggestion',
+    description:
+      'Get a single AI-generated ad-optimization suggestion by ID. Returns full payload including campaignId, actionType, field, currentValue, suggestedValue, reason, and status.',
+    method: 'GET',
+    endpoint: '/ads/suggestions/:id',
+    parameters: {
+      id: { type: 'string', description: 'The suggestion ID', required: true },
+    },
+  },
+  {
+    name: 'executeAdSuggestion',
+    description:
+      'Execute a pending ad-optimization suggestion. Marks the suggestion as executed and creates an AdChange record carrying before/after values for 24h reversibility. MVP: records the change locally but does not push to Lingxing yet. Requires ads:write permission.',
+    method: 'POST',
+    endpoint: '/ads/suggestions/:id/execute',
+    parameters: {
+      id: { type: 'string', description: 'The suggestion ID to execute', required: true },
+    },
+  },
+  {
+    name: 'rejectAdSuggestion',
+    description:
+      'Reject a pending ad-optimization suggestion (operator decided not to apply it). Marks the suggestion as rejected without creating any AdChange.',
+    method: 'POST',
+    endpoint: '/ads/suggestions/:id/reject',
+    parameters: {
+      id: { type: 'string', description: 'The suggestion ID to reject', required: true },
+    },
+  },
+  {
+    name: 'listAdChanges',
+    description:
+      'List executed ad changes for the authenticated brand. Includes status (executed/rolled_back), before/after values, executedBy, executedAt, and reversibleBefore (the 24h rollback deadline). Useful for change history audit and finding rollback candidates.',
+    method: 'GET',
+    endpoint: '/ads/suggestions/changes',
+    parameters: {
+      shopId: { type: 'string', description: 'Filter by shop ID.', required: false },
+      page: { type: 'number', description: 'Page number (default 1)', required: false },
+      limit: { type: 'number', description: 'Page size (default 50, max 200)', required: false },
+    },
+  },
+  {
+    name: 'rollbackAdChange',
+    description:
+      'Rollback an executed ad change within its 24h reversibility window. Sets the change status to rolled_back and reverts the source AdSuggestion from executed back to pending so it can be re-evaluated. Throws if past `reversibleBefore`.',
+    method: 'POST',
+    endpoint: '/ads/suggestions/changes/:changeId/rollback',
+    parameters: {
+      changeId: { type: 'string', description: 'The ad change ID to rollback', required: true },
+    },
+  },
+
   // ── Terminology (single-entry read) ──────────────────────────────────────
   {
     name: 'getTerminologyEntry',

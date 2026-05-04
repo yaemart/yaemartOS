@@ -508,6 +508,18 @@ async function main() {
         value: 'true',
         label: '非登录订单查询 (Spoonlemon)',
       },
+      { key: 'feature_flag.AD_DASHBOARD', value: 'true', label: '广告数据 Dashboard (全局)' },
+      {
+        key: 'feature_flag.AD_DASHBOARD.homtone',
+        value: 'true',
+        label: '广告数据 Dashboard (Homtone)',
+      },
+      { key: 'feature_flag.AD_SUGGESTION', value: 'true', label: 'AI 广告优化建议 (全局)' },
+      {
+        key: 'feature_flag.AD_SUGGESTION.homtone',
+        value: 'true',
+        label: 'AI 广告优化建议 (Homtone)',
+      },
     ];
     for (const flag of devFlags) {
       await prisma.systemConfig.upsert({

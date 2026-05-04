@@ -16,6 +16,7 @@ import {
 import type { IStructuredExtractionService } from './interfaces/structured-extraction.interface';
 import { AuditService } from '../common/audit/audit.service';
 import { DatabaseModule } from '../database/database.module';
+import { AiRateLimitModule } from './rate-limit/ai-rate-limit.module';
 
 class StubStructuredExtractionService implements IStructuredExtractionService {
   async ping(): Promise<'ok'> {
@@ -24,7 +25,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
 }
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AiRateLimitModule],
   controllers: [AiController],
   providers: [
     GeminiListingGenerationService,
@@ -58,6 +59,7 @@ class StubStructuredExtractionService implements IStructuredExtractionService {
     ModelRouterService,
     CostTrackingService,
     EmbeddingService,
+    AiRateLimitModule,
   ],
 })
 export class AiModule {}
