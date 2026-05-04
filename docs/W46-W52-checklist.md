@@ -196,7 +196,8 @@
 - [x] 失败时解析 hardFailures / softWarnings / metricDeltas → Slack Block Kit payload（含 run URL 按钮）
 - [x] `SLACK_WEBHOOK_URL` 未设置时跳过通知不阻塞（fork 友好）；`STAGING_API_BASE` 缺失走 smoke exit 2 自然失败
 - [x] [W49 staging smoke runbook](./runbooks/w49-staging-smoke-chat-tool.md)：必填/可选 secrets + `gh secret set` 命令 + 7 类常见根因 triage 表 + 暂停方法
-- [ ] **D2 解锁动作**：本地 `pnpm smoke:chat-tool` 对 dev DB 跑一次 → push `staging-smoke.yml` 到 main → 手动 `workflow_dispatch` brand=homtone dry-run → D3 周三起周一 cron 自动生效
+- [x] **D2 解锁动作 — git/PR 部分**（2026-05-04 完成）：W43-W49 累积 4 PR stack 合入 main —— [#14](https://github.com/yaemart/yaemartOS/pull/14) W43-W45 ad-suggestion gate → [#15](https://github.com/yaemart/yaemartOS/pull/15) W46-W47 SSE realtime → [#16](https://github.com/yaemart/yaemartOS/pull/16) W48 chat tool calling → [#17](https://github.com/yaemart/yaemartOS/pull/17) W49 KPI/smoke/audit；CI 全绿（3m38s ~ 4m31s）；本地 main fast-forward 到 `9f35d6b`；4 个 feat/w4\* branch 全部删除；`staging-smoke.yml` 已在 main 生效；institutional learning 沉淀至 [`docs/solutions/git-workflow/2026-05-04-stack-pr-orchestration.md`](./solutions/git-workflow/2026-05-04-stack-pr-orchestration.md)
+- [ ] **D2 解锁动作 — cron 真正生效**（待 GitHub Actions UI 操作）：手动 `workflow_dispatch` brand=homtone dry-run → 验证 `SLACK_WEBHOOK_URL` secret + 8 tool E2E + KPI metric 增量 → 验证通过后 D3 周三起周一 cron 自动生效
 
 #### P1-B-mod-v2.review-fixes：W49 D1 `/review` 发现的回归修复（实际 1.0 人日）
 

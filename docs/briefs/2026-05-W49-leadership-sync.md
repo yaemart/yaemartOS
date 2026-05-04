@@ -11,6 +11,12 @@
 > **F-3**（`tr.result` cast 静默失败致 error_count 永久归零）✅ 修
 > 三处共增 14 条单测（3 F-1 + 4 F-2/F-7 + 7 F-3 + 1 已存在的 F-1 漂移保护），跨 web + api 56/56 测试通过 + tsc clean。staging-smoke.yml 未 push 期间，cron 未误触发；准备 D2 push + 手动 workflow_dispatch 跑通后正式启用周一 cron。
 
+> **W49 D2 ops wrap-up (May 4, 2026, 22:00 JST)** — 累积的 W43-W49 工作整理为 4 个 stack PR 串行合入 main：
+> [#14](https://github.com/yaemart/yaemartOS/pull/14) W43-W45 ad-suggestion gate (3 commits, CI 3m38s) → [#15](https://github.com/yaemart/yaemartOS/pull/15) W46-W47 SSE realtime (59 files, CI 4m18s) → [#16](https://github.com/yaemart/yaemartOS/pull/16) W48 chat tool calling (12 files, CI 3m41s) → [#17](https://github.com/yaemart/yaemartOS/pull/17) W49 KPI/smoke/audit (11 files, CI 4m9s)。
+> 本地 main fast-forward 到 `9f35d6b`，4 个 feat/w4\* branch 删除（GitHub merge auto-delete 3 个 + remote PR-1 手动删 1 个），`.github/workflows/staging-smoke.yml` 已在 main 生效。
+> ⏳ **cron 真正解锁待 manual `workflow_dispatch` brand=homtone dry-run** —— 验证 `SLACK_WEBHOOK_URL` secret + 8 tool E2E + KPI metric 增量后，D3 周三起周一 cron 自动生效。
+> Institutional learning 沉淀至 [`docs/solutions/git-workflow/2026-05-04-stack-pr-orchestration.md`](../solutions/git-workflow/2026-05-04-stack-pr-orchestration.md)；执行 plan 见 [`docs/plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md`](../plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md)。
+
 ---
 
 ## TL;DR
