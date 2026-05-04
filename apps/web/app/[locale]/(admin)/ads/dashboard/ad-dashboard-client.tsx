@@ -2,11 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import type { AdDashboardResponse } from '@yaemartos/shared-types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AdLineChart } from '@/components/charts/line-chart';
 import { AdBarChart } from '@/components/charts/bar-chart';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -47,6 +49,23 @@ export function AdDashboardClient({
   const [dateError, setDateError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  // Realtime: dashboard charts auto-refresh whenever the cron sync completes
+  // (or a manual sync from another tab finishes). The ribbon is the only UI
+  // signal that data mutated under the user, since the charts re-render
+  // silently otherwise.
+  const [showRefreshRibbon, setShowRefreshRibbon] = useState(false);
+  useEntityRevalidation('ad-daily-stat', {
+    mode: 'auto',
+    onEvent: () => setShowRefreshRibbon(true),
+  });
+  useEffect(() => {
+    if (!showRefreshRibbon) {
+      return;
+    }
+    const t = setTimeout(() => setShowRefreshRibbon(false), 5000);
+    return () => clearTimeout(t);
+  }, [showRefreshRibbon]);
 
   function handleApply() {
     if (startDate && endDate && startDate > endDate) {
@@ -147,6 +166,12 @@ export function AdDashboardClient({
         >
           {syncMsg}
         </p>
+      )}
+      {showRefreshRibbon && (
+        <div className="inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-1 text-xs text-violet-700">
+          <Sparkles className="h-3 w-3 text-violet-500" />
+          广告数据已自动刷新
+        </div>
       )}
       {/* 筛选栏 */}
       <Card>

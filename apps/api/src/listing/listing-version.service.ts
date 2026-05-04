@@ -9,6 +9,7 @@ import { ListingVersionStatus, Prisma } from '../generated/prisma';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { ListingDraftIndexerService } from '../search/listing-draft-indexer.service';
+import { RealtimeBusService } from '../realtime/realtime-bus.service';
 import type { ListingContent } from '@yaemartos/shared-types';
 
 type Actor = {
@@ -23,11 +24,20 @@ export class ListingVersionService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly auditService: AuditService,
+    private readonly realtimeBus: RealtimeBusService,
     @Optional() private readonly draftIndexer?: ListingDraftIndexerService,
   ) {}
 
   private get prisma() {
     return this.prismaManager.getPublicClient();
+  }
+
+  private async getListingBrandId(listingId: string): Promise<string | null> {
+    const row = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { brandId: true },
+    });
+    return row?.brandId ?? null;
   }
 
   async listVersions(listingId: string) {
@@ -98,6 +108,31 @@ export class ListingVersionService {
         this.logger.warn(`Draft index failed for version ${version.id}: ${String(err)}`),
       );
 
+    // Realtime fanout: notify any open editor for this listing that a new
+    // version exists. We resolve brandId lazily — if the listing was deleted
+    // in a race, brandId will be null and we skip publication.
+    //
+    // ids carries both versionId and listingId so editor pages subscribing
+    // with `filterIds: [listingId]` catch the event without needing extra
+    // metadata filtering on the client.
+    const brandId = actor?.brandId ?? (await this.getListingBrandId(listingId));
+    if (brandId) {
+      void this.realtimeBus.publish({
+        entity: 'listing-version',
+        action: 'create',
+        brandId,
+        ids: [version.id, listingId],
+        actorType: actor?.id ? 'user' : 'agent',
+        actorId: actor?.id,
+        timestamp: Date.now(),
+        metadata: {
+          listingId,
+          versionNumber: version.versionNumber,
+          status: version.status,
+        },
+      });
+    }
+
     return version;
   }
 
@@ -150,6 +185,36 @@ export class ListingVersionService {
           `Draft index failed on activate for version ${activated.id}: ${String(err)}`,
         ),
       );
+
+    // Realtime fanout: editor cards / version timeline / dashboards rely on
+    // this to refresh after an activate. We publish two events because
+    // activation logically mutates both the version row and the parent
+    // listing's "active version" pointer; consumers may subscribe to either.
+    const brandId = actor?.brandId ?? (await this.getListingBrandId(listingId));
+    if (brandId) {
+      const ts = Date.now();
+      const actorType = actor?.id ? 'user' : 'agent';
+      void this.realtimeBus.publish({
+        entity: 'listing-version',
+        action: 'update',
+        brandId,
+        ids: [activated.id, listingId],
+        actorType,
+        actorId: actor?.id,
+        timestamp: ts,
+        metadata: { listingId, versionNumber, action: 'activate' },
+      });
+      void this.realtimeBus.publish({
+        entity: 'listing',
+        action: 'update',
+        brandId,
+        ids: [listingId],
+        actorType,
+        actorId: actor?.id,
+        timestamp: ts,
+        metadata: { activeVersionId: activated.id, versionNumber },
+      });
+    }
 
     return activated;
   }

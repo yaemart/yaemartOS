@@ -21,8 +21,9 @@ function createService() {
 
   const prismaManager = { getPublicClient: () => prisma } as any;
   const auditService = { logWrite: vi.fn() } as any;
-  const service = new ListingVersionService(prismaManager, auditService);
-  return { service, prisma, auditService };
+  const realtimeBus = { publish: vi.fn().mockResolvedValue(undefined) } as any;
+  const service = new ListingVersionService(prismaManager, auditService, realtimeBus);
+  return { service, prisma, auditService, realtimeBus };
 }
 
 const mockContent = {
@@ -200,6 +201,92 @@ describe('ListingVersionService', () => {
           data: { status: ListingVersionStatus.archived },
         }),
       );
+    });
+  });
+
+  describe('realtime publish (P0-B)', () => {
+    it('publishes listing-version create with listingId in ids on createDraftVersion', async () => {
+      const { service, prisma, realtimeBus } = createService();
+      prisma.listing.findUnique.mockResolvedValue({ id: 'lst_1', brandId: 'homtone' });
+      prisma.$transaction.mockImplementation(async (fn: any) =>
+        fn({
+          listingVersion: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({
+              id: 'ver_1',
+              listingId: 'lst_1',
+              versionNumber: 1,
+              contentSnapshot: mockContent,
+              status: ListingVersionStatus.draft,
+              createdBy: 'agent',
+              createdAt: new Date(),
+              publishedAt: null,
+            }),
+            updateMany: vi.fn(),
+          },
+        }),
+      );
+
+      await service.createDraftVersion('lst_1', mockContent, { brandId: 'homtone' });
+      await new Promise((r) => setImmediate(r));
+
+      expect(realtimeBus.publish).toHaveBeenCalledTimes(1);
+      const evt = realtimeBus.publish.mock.calls[0][0];
+      expect(evt).toMatchObject({
+        entity: 'listing-version',
+        action: 'create',
+        brandId: 'homtone',
+        actorType: 'agent',
+      });
+      expect(evt.ids).toEqual(['ver_1', 'lst_1']);
+    });
+
+    it('publishes both listing-version and listing events on activateVersion', async () => {
+      const { service, prisma, realtimeBus } = createService();
+      prisma.listing.findUnique.mockResolvedValue({ id: 'lst_1', brandId: 'homtone' });
+      prisma.listingVersion.findUnique.mockResolvedValue({
+        id: 'ver_2',
+        listingId: 'lst_1',
+        versionNumber: 2,
+        status: ListingVersionStatus.draft,
+      });
+      prisma.$transaction.mockImplementation(async (fn: any) =>
+        fn({
+          listingVersion: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            update: vi.fn().mockResolvedValue({
+              id: 'ver_2',
+              listingId: 'lst_1',
+              versionNumber: 2,
+              status: ListingVersionStatus.active,
+              publishedAt: new Date(),
+            }),
+          },
+        }),
+      );
+
+      await service.activateVersion('lst_1', 2, { id: 'user_1', brandId: 'homtone' });
+      await new Promise((r) => setImmediate(r));
+
+      expect(realtimeBus.publish).toHaveBeenCalledTimes(2);
+      const entities = realtimeBus.publish.mock.calls.map((c: any[]) => c[0].entity);
+      expect(entities).toContain('listing-version');
+      expect(entities).toContain('listing');
+
+      const versionEvt = realtimeBus.publish.mock.calls.find(
+        (c: any[]) => c[0].entity === 'listing-version',
+      )?.[0];
+      expect(versionEvt).toMatchObject({
+        action: 'update',
+        actorType: 'user',
+        actorId: 'user_1',
+      });
+      expect(versionEvt.ids).toContain('lst_1');
+
+      const listingEvt = realtimeBus.publish.mock.calls.find(
+        (c: any[]) => c[0].entity === 'listing',
+      )?.[0];
+      expect(listingEvt.ids).toEqual(['lst_1']);
     });
   });
 });

@@ -30,6 +30,38 @@ interface AuthRequest extends Request {
   resolvedBrandId?: string;
 }
 
+const VALID_LIST_STATUSES = new Set<string>([
+  AdSuggestionStatus.pending,
+  AdSuggestionStatus.accepted,
+  AdSuggestionStatus.rejected,
+  AdSuggestionStatus.executed,
+  AdSuggestionStatus.expired,
+]);
+
+function parseStatus(raw?: string): AdSuggestionStatus | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!VALID_LIST_STATUSES.has(raw)) {
+    throw new BadRequestException(
+      `Invalid status='${raw}'. Allowed: ${[...VALID_LIST_STATUSES].join(', ')}`,
+    );
+  }
+  return raw as AdSuggestionStatus;
+}
+
+function parsePagination(page?: string, limit?: string): { page: number; limit: number } {
+  const p = page ? parseInt(page, 10) : 1;
+  const l = limit ? parseInt(limit, 10) : 50;
+  if (!Number.isFinite(p) || p < 1) {
+    throw new BadRequestException('page must be a positive integer');
+  }
+  if (!Number.isFinite(l) || l < 1) {
+    throw new BadRequestException('limit must be a positive integer');
+  }
+  return { page: p, limit: l };
+}
+
 @Controller('ads/suggestions')
 @UseGuards(JwtAuthGuard, CasbinGuard, AiRateLimitGuard)
 export class AdSuggestionController {
@@ -69,7 +101,7 @@ export class AdSuggestionController {
   async list(
     @Req() req: AuthRequest,
     @Query('shopId') shopId?: string,
-    @Query('status') status?: AdSuggestionStatus,
+    @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -78,15 +110,21 @@ export class AdSuggestionController {
       throw new BadRequestException('Brand context required');
     }
 
+    const validatedStatus = parseStatus(status);
+    const pagination = parsePagination(page, limit);
+
     return this.suggestionService.list({
       brandId,
       shopId,
-      status,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 50,
+      status: validatedStatus,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 
+  // NOTE: `Get('changes')` and `Post('changes/:changeId/rollback')` MUST appear
+  // before `Get(':id')` / `Post(':id/execute')` etc. NestJS resolves routes in
+  // declaration order — moving these later would shadow them as `id='changes'`.
   @Get('changes')
   @RequirePolicy({ obj: 'ads', act: 'read', field: '*' })
   async listChanges(
@@ -99,11 +137,12 @@ export class AdSuggestionController {
     if (!brandId) {
       throw new BadRequestException('Brand context required');
     }
+    const pagination = parsePagination(page, limit);
     return this.suggestionService.listChanges({
       brandId,
       shopId,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 50,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 

@@ -3,16 +3,21 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, ChevronDown, Languages, Save } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Languages, RefreshCw, Save, Sparkles, X } from 'lucide-react';
 import type {
   BatchGenerateResult,
   ListingItem,
   ListingVersionItem,
   LocaleInfo,
 } from '@/lib/api/listing-client';
-import { batchGenerateMultilingual, generateListingDraft } from '@/lib/api/listing-client';
+import {
+  activateVersion,
+  batchGenerateMultilingual,
+  generateListingDraft,
+} from '@/lib/api/listing-client';
 import { getKeywordSuggestions, getListingSummaryMcp } from '@/lib/api/ai-mcp-client';
 import type { ListingVersion } from '@/lib/mock-data';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 import { LocaleSwitcher } from './locale-switcher';
 import { VersionTimeline } from './version-timeline';
 import { ContentEditor } from './content-editor';
@@ -82,6 +87,60 @@ export function ListingEditorShell({
     succeeded: number;
     failed: Array<{ language: string; platformCode: string; error?: string }>;
   } | null>(null);
+
+  // Realtime: surface a toast when an agent (or another tab) writes to this
+  // listing. We use `'toast'` mode — never auto-discard the operator's
+  // unsaved local edits. Both `listing` and `listing-version` events
+  // include this listingId in `ids` (see ListingVersionService.publish).
+  const listingId = listing.id;
+  const listingPending = useEntityRevalidation('listing', {
+    mode: 'toast',
+    filterIds: [listingId],
+  });
+  const versionPending = useEntityRevalidation('listing-version', {
+    mode: 'toast',
+    filterIds: [listingId],
+  });
+  const pendingCount = listingPending.pendingEvents.length + versionPending.pendingEvents.length;
+  // Prefer the most recent of the two streams; both pending lists are
+  // append-only so the last element is always newest within the stream.
+  const lastListingEvent = listingPending.pendingEvents.at(-1);
+  const lastVersionEvent = versionPending.pendingEvents.at(-1);
+  const newestPending = !lastListingEvent
+    ? lastVersionEvent
+    : !lastVersionEvent
+      ? lastListingEvent
+      : lastListingEvent.timestamp > lastVersionEvent.timestamp
+        ? lastListingEvent
+        : lastVersionEvent;
+
+  function applyPending() {
+    listingPending.acceptPending();
+    versionPending.acceptPending();
+  }
+  function dismissPending() {
+    listingPending.dismissPending();
+    versionPending.dismissPending();
+  }
+
+  const [activating, setActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
+
+  async function handleActivateVersion(version: ListingVersion) {
+    if (version.status === 'active') {
+      return;
+    }
+    setActivating(true);
+    setActivateError(null);
+    try {
+      await activateVersion(accessToken, listingId, version.number, brandId);
+      router.refresh();
+    } catch (err) {
+      setActivateError(err instanceof Error ? err.message : '激活失败');
+    } finally {
+      setActivating(false);
+    }
+  }
 
   function handleLocaleSwitch(targetLocale: string) {
     const sibling = siblingListings.find((s) => s.language === targetLocale);
@@ -249,6 +308,49 @@ export function ListingEditorShell({
         />
       )}
 
+      {/* Realtime change notice (toast mode — operator decides when to apply) */}
+      {pendingCount > 0 && newestPending && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="shrink-0 border-b border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-900 flex items-center gap-3"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+          <div className="flex-1 leading-tight">
+            <p className="font-medium">
+              {newestPending.actorType === 'agent' ? 'AI Agent' : '其他用户'}
+              已修改此 Listing
+              {pendingCount > 1 ? `（${pendingCount} 项变更）` : ''}
+            </p>
+            <p className="text-xs text-violet-700">
+              点击「应用」获取最新数据；当前未保存的编辑会被覆盖。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={applyPending}
+            className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+          >
+            <RefreshCw className="h-3 w-3" />
+            应用
+          </button>
+          <button
+            type="button"
+            onClick={dismissPending}
+            aria-label="忽略此通知"
+            className="text-violet-500 hover:text-violet-700 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {activateError && (
+        <div className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          激活失败：{activateError}
+        </div>
+      )}
+
       {/* Multilingual batch generation result panel */}
       {multilingualResult !== null && (
         <div
@@ -319,6 +421,8 @@ export function ListingEditorShell({
               versions={uiVersions}
               selected={selectedVersion ?? uiVersions[0]}
               onSelect={setSelectedVersion}
+              onActivate={handleActivateVersion}
+              activating={activating}
             />
           ) : (
             <div className="p-4 text-xs text-zinc-400">暂无版本</div>

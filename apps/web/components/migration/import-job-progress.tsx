@@ -4,12 +4,15 @@ import { useEffect, useState, useCallback } from 'react';
 import { CheckCircle2, XCircle, Loader2, Clock } from 'lucide-react';
 import { getPathAImportJob } from '@/lib/api/migration-client';
 import type { PathAImportJobDetail } from '@/lib/api/migration-client';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 
 interface ImportJobProgressProps {
   jobId: string;
   token: string;
   onComplete?: (job: PathAImportJobDetail) => void;
 }
+
+const POLL_FALLBACK_MS = 8_000;
 
 const STATUS_CONFIG = {
   waiting: {
@@ -102,14 +105,25 @@ export function ImportJobProgress({ jobId, token, onComplete }: ImportJobProgres
     }
   }, [jobId, token, onComplete]);
 
+  // SSE-driven refresh — fires `fetchJob` whenever a `migration-job` event
+  // for *this* job arrives. Falls back to slow polling so the UI still
+  // converges if Redis or SSE is unreachable. ADR-011 §D2.
+  useEntityRevalidation('migration-job', {
+    mode: 'auto',
+    filterIds: [jobId],
+    onEvent: () => {
+      void fetchJob();
+    },
+  });
+
   useEffect(() => {
-    fetchJob();
+    void fetchJob();
     const isTerminal = job?.status === 'completed' || job?.status === 'failed';
     if (isTerminal) {
       return;
     }
 
-    const interval = setInterval(fetchJob, 3000);
+    const interval = setInterval(fetchJob, POLL_FALLBACK_MS);
     return () => clearInterval(interval);
   }, [fetchJob, job?.status]);
 

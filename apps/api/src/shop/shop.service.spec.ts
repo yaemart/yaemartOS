@@ -31,8 +31,12 @@ function createService() {
     },
   } as any;
 
-  const service = new ShopService(prismaManager, auditService, lingxingClient);
-  return { service, prisma, auditService, lingxingClient };
+  const realtimeBus = {
+    publish: vi.fn().mockResolvedValue(undefined),
+  } as any;
+
+  const service = new ShopService(prismaManager, auditService, lingxingClient, realtimeBus);
+  return { service, prisma, auditService, lingxingClient, realtimeBus };
 }
 
 describe('ShopService', () => {
@@ -125,7 +129,7 @@ describe('ShopService', () => {
 
   it('binds a shop and sets syncEnabled to true', async () => {
     const { service, prisma, auditService } = createService();
-    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1' });
+    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
     prisma.shopBinding.upsert.mockResolvedValue({
       id: 'binding_1',
       shopId: 'shop_1',
@@ -160,7 +164,7 @@ describe('ShopService', () => {
 
   it('updates binding with existing shop (re-bind)', async () => {
     const { service, prisma } = createService();
-    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1' });
+    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
     prisma.shopBinding.upsert.mockResolvedValue({
       id: 'binding_1',
       shopId: 'shop_1',
@@ -188,7 +192,7 @@ describe('ShopService', () => {
 
   it('toggles syncEnabled via updateBinding', async () => {
     const { service, prisma, auditService } = createService();
-    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1' });
+    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
     prisma.shopBinding.update.mockResolvedValue({
       id: 'binding_1',
       shopId: 'shop_1',
@@ -209,7 +213,7 @@ describe('ShopService', () => {
 
   it('soft-unbinds via updateBinding({ unbind: true })', async () => {
     const { service, prisma, auditService } = createService();
-    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1' });
+    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
     prisma.shopBinding.update.mockResolvedValue({
       id: 'binding_1',
       shopId: 'shop_1',
@@ -232,7 +236,7 @@ describe('ShopService', () => {
 
   it('unbind takes priority when unbind:true and syncEnabled:true are both passed', async () => {
     const { service, prisma } = createService();
-    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1' });
+    prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
     prisma.shopBinding.update.mockResolvedValue({
       id: 'binding_1',
       lingxingShopId: null,
@@ -331,6 +335,81 @@ describe('ShopService', () => {
 
       await expect(service.create(dto)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.shop.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('realtime publish (P0-D)', () => {
+    it('publishes shop-binding update on bind', async () => {
+      const { service, prisma, realtimeBus } = createService();
+      prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'homtone' });
+      prisma.shopBinding.upsert.mockResolvedValue({
+        id: 'binding_1',
+        shopId: 'shop_1',
+        lingxingShopId: 'lx_1',
+        syncEnabled: true,
+      });
+
+      await service.bind('shop_1', { lingxingShopId: 'lx_1' }, 'user_1');
+
+      expect(realtimeBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entity: 'shop-binding',
+          action: 'update',
+          brandId: 'homtone',
+          ids: ['binding_1', 'shop_1'],
+          actorType: 'user',
+          actorId: 'user_1',
+          metadata: expect.objectContaining({ action: 'bind', lingxingShopId: 'lx_1' }),
+        }),
+      );
+    });
+
+    it('publishes shop-binding update on toggleSync', async () => {
+      const { service, prisma, realtimeBus } = createService();
+      prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'spoonlemon' });
+      prisma.shopBinding.update.mockResolvedValue({
+        id: 'binding_1',
+        shopId: 'shop_1',
+        syncEnabled: false,
+      });
+
+      await service.updateBinding('shop_1', { syncEnabled: false });
+
+      expect(realtimeBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entity: 'shop-binding',
+          action: 'update',
+          brandId: 'spoonlemon',
+          ids: ['binding_1', 'shop_1'],
+          actorType: 'agent',
+          metadata: expect.objectContaining({ action: 'toggleSync', syncEnabled: false }),
+        }),
+      );
+    });
+
+    it('publishes shop-binding update on unbind', async () => {
+      const { service, prisma, realtimeBus } = createService();
+      prisma.shop.findUnique.mockResolvedValue({ id: 'shop_1', brandId: 'davivy' });
+      prisma.shopBinding.update.mockResolvedValue({
+        id: 'binding_1',
+        shopId: 'shop_1',
+        lingxingShopId: null,
+        syncEnabled: false,
+      });
+
+      await service.updateBinding('shop_1', { unbind: true }, 'user_2');
+
+      expect(realtimeBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entity: 'shop-binding',
+          action: 'update',
+          brandId: 'davivy',
+          ids: ['binding_1', 'shop_1'],
+          actorType: 'user',
+          actorId: 'user_2',
+          metadata: expect.objectContaining({ action: 'unbind' }),
+        }),
+      );
     });
   });
 

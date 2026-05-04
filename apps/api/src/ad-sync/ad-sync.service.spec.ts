@@ -60,7 +60,14 @@ const makeService = () => {
     },
   } as unknown as LingxingClient;
 
-  const service = new AdSyncService(prismaManager, lingxingClient);
+  const realtimePublish = vi.fn().mockResolvedValue(undefined);
+  const realtimeBus = {
+    publish: realtimePublish,
+    subscribeForBrand: vi.fn(),
+    emitLocalForTest: vi.fn(),
+  } as unknown as import('../realtime/realtime-bus.service').RealtimeBusService;
+
+  const service = new AdSyncService(prismaManager, lingxingClient, realtimeBus);
 
   return {
     service,
@@ -74,11 +81,39 @@ const makeService = () => {
       getSdCampaignReport,
       getSbCampaignReport,
       getWalmartCampaignReport,
+      realtimePublish,
     },
   };
 };
 
 describe('AdSyncService', () => {
+  describe('realtime publish', () => {
+    it('publishes ad-daily-stat update with shopId/date metadata after sync', async () => {
+      const { service, mocks } = makeService();
+      mocks.shopFindUnique.mockResolvedValue({
+        id: 'shop-1',
+        brandId: 'homtone',
+        platform: { code: 'amazon' },
+      });
+      mocks.getSpCampaignReport.mockResolvedValue(makeAdReportResult('sp', []));
+      mocks.getSdCampaignReport.mockResolvedValue(makeAdReportResult('sd', []));
+      mocks.getSbCampaignReport.mockResolvedValue(makeAdReportResult('sb', []));
+
+      await service.syncShopDate('shop-1', 'homtone', '2026-05-03');
+
+      expect(mocks.realtimePublish).toHaveBeenCalledTimes(1);
+      const evt = mocks.realtimePublish.mock.calls[0]![0];
+      expect(evt).toMatchObject({
+        entity: 'ad-daily-stat',
+        action: 'update',
+        brandId: 'homtone',
+        actorType: 'system',
+      });
+      expect(evt.ids).toEqual(['shop-1:2026-05-03']);
+      expect(evt.metadata).toMatchObject({ shopId: 'shop-1', date: '2026-05-03' });
+    });
+  });
+
   describe('syncShopDate', () => {
     it('Happy path: Amazon shop calls SP/SD/SB, upserts AdDailyStat, creates Metric', async () => {
       const { service, mocks } = makeService();
