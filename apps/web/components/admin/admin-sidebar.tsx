@@ -47,6 +47,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { icon: Upload, label: '数据导入', href: '/migration' },
       { icon: BarChart2, label: '广告看板', href: '/ads/dashboard', capability: 'ads:read' },
+      { icon: BarChart2, label: '广告建议', href: '/ads/suggestions', capability: 'ads:read' },
     ],
   },
   {
