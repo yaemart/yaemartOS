@@ -17,6 +17,10 @@
 > ⏳ **cron 真正解锁待 manual `workflow_dispatch` brand=homtone dry-run** —— 验证 `SLACK_WEBHOOK_URL` secret + 8 tool E2E + KPI metric 增量后，D3 周三起周一 cron 自动生效。
 > Institutional learning 沉淀至 [`docs/solutions/git-workflow/2026-05-04-stack-pr-orchestration.md`](../solutions/git-workflow/2026-05-04-stack-pr-orchestration.md)；执行 plan 见 [`docs/plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md`](../plans/2026-05-04-005-chore-w43-w49-stack-pr-merge-plan.md)。
 
+> **W49 D2 22:30 hotfix — F-8 紧急升级 P0（`set +e` silent failure）** — Manual trigger 第 1 次 run（`Staging Smoke — Chat Tool #1`，brand=homtone）显示 25s ✅ Success，时长远低于真实 smoke 应有的 1-3min，触发深查发现 staging-smoke.yml 的 smoke step 末尾 `echo "exit_code=$?"` 让 `steps.smoke.outcome` 永远等于 `success`（echo 自身 exit 0 覆盖真实 smoke 退出码），workflow 永远绿、Slack 永不通知、cron 解锁判定彻底失效。
+> W49 D1 review 已记录此问题为 F-8（P2）排到卫生周；D2 manual trigger 暴露真实影响是 P0，**当晚 hotfix 直接 push 到 main**：smoke step 改为 `ec=$?; echo exit_code=$ec; exit "$ec"` 模式，让 step.outcome 反映真实 smoke 退出码，artifact upload / Slack notify / Fail job step 仍能跑（依靠 `continue-on-error: true`）。
+> 卫生周 backlog scope 同步从 13 项调整为 12 项（F-8 移出，节省 0.05d；方案 A 总额 0.50 人日正好达标）。**cron 解锁判定重置 — 待 hotfix 后第 2 次 manual trigger 验证才能真正解锁。**
+
 ---
 
 ## TL;DR

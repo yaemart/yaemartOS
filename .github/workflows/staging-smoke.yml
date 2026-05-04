@@ -69,9 +69,23 @@ jobs:
           # warnings) flows naturally to the workflow log. We swallow the
           # non-zero exit here (handled by `continue-on-error: true`) and
           # surface it via the explicit "Fail job" step below.
+          #
+          # F-8 hotfix (2026-05-04): the previous version ended with
+          # `echo "exit_code=$?" >> $GITHUB_OUTPUT`, making `echo` the
+          # final command of the script. A successful `echo` always
+          # exits 0, so `steps.smoke.outcome` was permanently `success`
+          # — silently masking smoke exit 1 (hard fail) and exit 2
+          # (config missing). The cron run never noticed silent failures,
+          # which broke the W49 P1-B-mod-v2 cron unlock judgement.
+          # We now capture the smoke exit code into `ec` and `exit $ec`
+          # so the step outcome correctly reflects smoke's true result;
+          # `continue-on-error: true` still lets later steps (artifact
+          # upload, Slack notify, fail-job) run.
           set +e
           pnpm --silent run smoke:chat-tool > smoke-output.json
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          ec=$?
+          echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
+          exit "$ec"
 
       - name: Upload smoke artifacts
         if: always()

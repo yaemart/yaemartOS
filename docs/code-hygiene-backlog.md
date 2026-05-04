@@ -37,9 +37,9 @@
 
 ## Scope 界定（卫生周本体，不含上方 §0 的 P0 漏勾）
 
-**包含**（13 项）：
+**包含**（12 项，原 13 项中 F-8 W49 D2 紧急升级 P0 已修，从 scope 移出）：
 
-- F-8（GitHub Actions footgun，P2 但单点，不属业务带）
+- ~~F-8（GitHub Actions footgun，P2 但单点，不属业务带）~~ → **W49 D2 紧急 hotfix，已修**（详见下方 §1）
 - F-10 – F-17（8 项 P3 nit）
 - T-4 / T-5 / T-6（3 项测试覆盖缺口，均为 P2/P3 优先级）
 - F-18（与 F-1 同根，已通过 W49 D1 `MetricRecord.value: number | string` 类型修复隐式关闭，本表仅做归档备注）
@@ -54,11 +54,13 @@
 
 ---
 
-## 1. F-8：GitHub Actions `set +e` 后未恢复（footgun）
+## 1. F-8：GitHub Actions `set +e` 后未恢复 — W49 D2 紧急 hotfix（已修 ✅）
+
+> **状态升级历程**：W49 D1 `/review` 标 P2 → 卫生周方案 A 排期 → **W49 D2 紧急升级 P0**（cron 第 1 次 manual trigger 暴露真实影响）→ **当日 hotfix 直接进 main**
 
 **位置**：`.github/workflows/staging-smoke.yml` smoke step
 
-**当前形态**：
+**Pre-fix 形态**（从 W49 D1 commit 起到 W49 D2 hotfix 之前）：
 
 ```bash
 set +e
@@ -66,16 +68,38 @@ pnpm --silent run smoke:chat-tool > smoke-output.json
 echo "exit_code=$?" >> $GITHUB_OUTPUT
 ```
 
-**风险**：未来追加命令时，没有恢复 `set -e`，后继命令静默失败不会 fail 工作流。当下不是 bug，但是 footgun。
+**真实影响**（W49 D2 manual trigger 暴露）：
 
-**修复 ToDo**：
+step 末尾的 `echo` 是最后一条命令，echo 永远 exit 0，所以 GitHub Actions 计算 `steps.smoke.outcome` 永远等于 `success`，无论 smoke 脚本本身 exit 0 / 1（hard fail）/ 2（config 缺失）。这反过来让：
 
-- [ ] 改写成 `if ! pnpm --silent run smoke:chat-tool > smoke-output.json; then ec=$?; ... ; fi` 模式
-- [ ] 或在 smoke step 后立即 `set -e` 显式复位
-- [ ] act / `gh workflow run` 本地 dry-run 一次确认 syntactical OK
-- [ ] **验收**：人为在 step 末尾追加一条 `false` 命令，整个 workflow 必须 fail（pre-fix 会 silent pass）
+- `Notify Slack on failure` 的 `if: steps.smoke.outcome != 'success'` 永远 false → 永不通知
+- `Fail job if smoke failed` 的同样条件永远 false → workflow 永远 ✅
 
-**估时**：~0.05 人日（5 分钟改 + 10 分钟 act 验证）
+**直接证据**：W49 D2 22:00 manual trigger 第 1 次 run 显示总时长 25s（远低于真实 smoke 应有的 1-3min）+ ✅ Success，但 secrets 当时全未配置，smoke 脚本必然 exit 2。然而 workflow 显示绿色，没有 Slack 通知，cron 解锁判定**完全失效**。
+
+如果 W49 D2 没人手动 trigger 验证，cron 每周一会自动跑 → ✅ → 谁都不知道 smoke 实际从未真正运行。7 天观测窗口起算的是空数据。
+
+**Hotfix（W49 D2 已上线）**：
+
+```bash
+set +e
+pnpm --silent run smoke:chat-tool > smoke-output.json
+ec=$?
+echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
+exit "$ec"        # ← 关键：让 step.outcome 反映真实 smoke 退出码
+```
+
+`continue-on-error: true` 保留，让 artifact upload / Slack notify / Fail job 等后续 step 仍能跑；但 `exit "$ec"` 让 `step.outcome` 正确反映真实 smoke 结果。
+
+**验收**（hotfix 后下次 manual trigger 验证）：
+
+- [ ] secrets 全配齐场景：smoke exit 0，workflow ✅，Slack 不通知（success 不发，失败才发）
+- [ ] secrets 缺失场景：smoke exit 2，workflow ❌，Slack 通知 hard failures = ['Missing secret: STAGING_API_BASE'] 等
+- [ ] hard fail 场景（人为 mock 一个失败用例）：smoke exit 1，workflow ❌，Slack 通知含 metricDeltas
+
+**实际耗时**：~0.05 人日（5 分钟改 + 文档同步 + manual trigger 验证）
+
+**Sprint impact**：原方案 A 卫生周 0.55d → 0.50d（F-8 移出 0.05d 节省）
 
 ---
 
@@ -288,26 +312,26 @@ echo "exit_code=$?" >> $GITHUB_OUTPUT
 
 ## 14. 容量对账
 
-| 项                       | 工时     | 累计     | 备注                        |
-| ------------------------ | -------- | -------- | --------------------------- |
-| **§0 P0 sidebar 假链接** | **0.05** | **0.05** | **必须最先做**              |
-| F-8                      | 0.05     | 0.10     | footgun                     |
-| F-10                     | 0.10     | 0.20     | i18n                        |
-| F-11                     | 0.02     | 0.22     | ESM ready                   |
-| F-12                     | 0.03     | 0.25     | 漂移正则                    |
-| F-13                     | 0.05     | 0.30     | 200 → 5000 上限             |
-| F-14                     | 0.08     | 0.38     | allSettled                  |
-| F-16                     | 0.03     | 0.41     | Slack fallback              |
-| F-17                     | 0.04     | 0.45     | SSE 注释行                  |
-| T-4                      | 0.10     | 0.55     | RTL widget                  |
-| T-5                      | 0.15     | 0.70     | parseSseChunk 抽函数 + spec |
-| T-6                      | 0.12     | 0.82     | jq snapshot                 |
+| 项                       | 工时     | 累计     | 备注                             |
+| ------------------------ | -------- | -------- | -------------------------------- |
+| **§0 P0 sidebar 假链接** | **0.05** | **0.05** | **必须最先做**                   |
+| ~~F-8~~                  | ~~0.05~~ | ~~0.10~~ | ~~footgun~~ → W49 D2 hotfix 已修 |
+| F-10                     | 0.10     | 0.15     | i18n                             |
+| F-11                     | 0.02     | 0.17     | ESM ready                        |
+| F-12                     | 0.03     | 0.20     | 漂移正则                         |
+| F-13                     | 0.05     | 0.25     | 200 → 5000 上限                  |
+| F-14                     | 0.08     | 0.33     | allSettled                       |
+| F-16                     | 0.03     | 0.36     | Slack fallback                   |
+| F-17                     | 0.04     | 0.40     | SSE 注释行                       |
+| T-4                      | 0.10     | 0.50     | RTL widget                       |
+| T-5                      | 0.15     | 0.65     | parseSseChunk 抽函数 + spec      |
+| T-6                      | 0.12     | 0.77     | jq snapshot                      |
 
-**实际预估总和**：**~0.82 人日**（超出 0.5 人日目标 0.32 人日）
+**实际预估总和**：**~0.77 人日**（W49 D2 F-8 hotfix 节省 0.05；超出 0.5 人日目标 0.27 人日）
 
 **取舍方案**：
 
-- **方案 A — 严格 0.5 人日** ✅ **已采纳（W49 D1 决议 2026-05-04）**：必做 §0 P0 + F-8 / F-10 / F-11 / F-12 / F-13 / F-14 / F-16 / F-17（共 0.45），加 T-4 任选一项（0.10）→ 0.55 略超；或砍 F-14 留 T-4（0.47）；T-5 / T-6 推到下一次卫生周
+- **方案 A — 严格 0.5 人日** ✅ **已采纳（W49 D1 决议 2026-05-04，W49 D2 F-8 移出后修订）**：必做 §0 P0 + F-10 / F-11 / F-12 / F-13 / F-14 / F-16 / F-17（共 0.40，原含 F-8 0.45，移出后 0.40），加 T-4（0.10）→ 0.50 正好达标；T-5 / T-6 推到下一次卫生周
 - ~~方案 B — 严格 1.0 人日~~：13 项全做 + §0 P0，集中清完不留尾巴 — **本次未采纳**
 
 > **采纳理由**：§0 P0 是 active 用户信任伤害必须先做；T-5/T-6 是测试增量，错过一次卫生周不引入新债；保留 0.5 人日硬性容量约束，避免侵蚀 W52 v3 重审计或 §9 业务带产能。
