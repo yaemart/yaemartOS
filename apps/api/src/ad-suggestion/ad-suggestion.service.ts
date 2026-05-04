@@ -1,10 +1,23 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaClientManager } from '../database/prisma.service';
 import { GlmGenerationService } from '../ai/providers/glm-generation.service';
 import { CostTrackingService } from '../ai/cost-tracking.service';
-import { AdActionType, AdSuggestionStatus, AdType as PrismaAdType } from '../generated/prisma';
+import { AuditService } from '../common/audit/audit.service';
+import {
+  AdActionType,
+  AdChangeStatus,
+  AdSuggestionStatus,
+  AdType as PrismaAdType,
+} from '../generated/prisma';
 
+const ROLLBACK_WINDOW_HOURS = 24;
 const SUGGESTION_TTL_DAYS = 7;
 const TARGET_ACOS = 30; // %
 const ACOS_BREACH_THRESHOLD = 39; // 130% of target
@@ -41,6 +54,7 @@ export class AdSuggestionService {
     private readonly prismaManager: PrismaClientManager,
     private readonly glm: GlmGenerationService,
     private readonly costTracking: CostTrackingService,
+    private readonly audit: AuditService,
   ) {}
 
   private get prisma() {
@@ -187,6 +201,183 @@ export class AdSuggestionService {
       throw new NotFoundException(`AdSuggestion ${id} not found`);
     }
     return suggestion;
+  }
+
+  /**
+   * Executes a pending suggestion: marks it `executed` and records an `AdChange`
+   * carrying the before/after values needed for rollback. The MVP does not push
+   * to upstream Lingxing — the change exists purely as a local record so the
+   * gate, audit trail, and rollback semantics can be exercised end-to-end.
+   *
+   * Rollback window: 24h from execution. The change row carries `reversibleBefore`
+   * so future jobs can lock the row once the window closes.
+   */
+  async execute(id: string, brandId: string, userId?: string) {
+    const suggestion = await this.findOne(id, brandId);
+
+    if (suggestion.status !== AdSuggestionStatus.pending) {
+      throw new ConflictException(`Suggestion is in status=${suggestion.status}, cannot execute`);
+    }
+    if (suggestion.expiresAt < new Date()) {
+      throw new BadRequestException('Suggestion has expired and can no longer be executed');
+    }
+
+    const now = new Date();
+    const reversibleBefore = new Date(now.getTime() + ROLLBACK_WINDOW_HOURS * 60 * 60 * 1000);
+
+    const change = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.adSuggestion.update({
+        where: { id },
+        data: { status: AdSuggestionStatus.executed, updatedAt: now },
+      });
+
+      // ConflictException-safe guard: the where clause above only matches the
+      // current row, but if a concurrent request raced through findOne it could
+      // double-execute. Reject here when status drifted.
+      if (updated.status !== AdSuggestionStatus.executed) {
+        throw new ConflictException('Suggestion status changed mid-execution');
+      }
+
+      const newChange = await tx.adChange.create({
+        data: {
+          suggestionId: suggestion.id,
+          shopId: suggestion.shopId,
+          brandId: suggestion.brandId,
+          campaignId: suggestion.campaignId,
+          actionType: suggestion.actionType,
+          field: suggestion.field,
+          valueBefore: suggestion.currentValue,
+          valueAfter: suggestion.suggestedValue,
+          executedBy: userId,
+          reversibleBefore,
+          status: AdChangeStatus.executed,
+          metadata: {
+            campaignName: suggestion.campaignName,
+            adType: suggestion.adType,
+            reason: suggestion.reason,
+          },
+        },
+      });
+      return newChange;
+    });
+
+    await this.audit.logWrite({
+      userId,
+      tenant: brandId,
+      action: 'ads.suggestion.execute',
+      entity: 'AdSuggestion',
+      entityId: id,
+      metadata: {
+        before: { status: AdSuggestionStatus.pending },
+        after: { status: AdSuggestionStatus.executed },
+        changeId: change.id,
+        field: suggestion.field,
+        valueBefore: suggestion.currentValue?.toString() ?? null,
+        valueAfter: suggestion.suggestedValue?.toString() ?? null,
+      },
+    });
+
+    return { suggestion: { ...suggestion, status: AdSuggestionStatus.executed }, change };
+  }
+
+  async reject(id: string, brandId: string, userId?: string) {
+    const suggestion = await this.findOne(id, brandId);
+    if (suggestion.status !== AdSuggestionStatus.pending) {
+      throw new ConflictException(`Suggestion is in status=${suggestion.status}, cannot reject`);
+    }
+    const updated = await this.prisma.adSuggestion.update({
+      where: { id },
+      data: { status: AdSuggestionStatus.rejected, updatedAt: new Date() },
+    });
+
+    await this.audit.logWrite({
+      userId,
+      tenant: brandId,
+      action: 'ads.suggestion.reject',
+      entity: 'AdSuggestion',
+      entityId: id,
+      metadata: {
+        before: { status: AdSuggestionStatus.pending },
+        after: { status: AdSuggestionStatus.rejected },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Rolls back an executed change within the 24h reversibility window. Sets
+   * `AdChange.status = rolled_back` and reverts the source `AdSuggestion` from
+   * `executed` back to `pending` so it can be re-evaluated.
+   */
+  async rollback(changeId: string, brandId: string, userId?: string) {
+    const change = await this.prisma.adChange.findUnique({ where: { id: changeId } });
+    if (!change || change.brandId !== brandId) {
+      throw new NotFoundException(`AdChange ${changeId} not found`);
+    }
+    if (change.status !== AdChangeStatus.executed) {
+      throw new ConflictException(`AdChange is in status=${change.status}, cannot rollback`);
+    }
+    if (change.reversibleBefore < new Date()) {
+      throw new BadRequestException(
+        `AdChange is past its 24h rollback window (reversibleBefore=${change.reversibleBefore.toISOString()})`,
+      );
+    }
+
+    const now = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updatedChange = await tx.adChange.update({
+        where: { id: changeId },
+        data: {
+          status: AdChangeStatus.rolled_back,
+          rolledBackAt: now,
+          rolledBackBy: userId,
+        },
+      });
+      if (change.suggestionId) {
+        await tx.adSuggestion.update({
+          where: { id: change.suggestionId },
+          data: { status: AdSuggestionStatus.pending, updatedAt: now },
+        });
+      }
+      return updatedChange;
+    });
+
+    await this.audit.logWrite({
+      userId,
+      tenant: brandId,
+      action: 'ads.change.rollback',
+      entity: 'AdChange',
+      entityId: changeId,
+      metadata: {
+        before: { status: AdChangeStatus.executed },
+        after: { status: AdChangeStatus.rolled_back },
+        suggestionId: change.suggestionId,
+        valueAfter: change.valueAfter?.toString() ?? null,
+        valueBefore: change.valueBefore?.toString() ?? null,
+      },
+    });
+
+    return result;
+  }
+
+  async listChanges(opts: { brandId: string; shopId?: string; page?: number; limit?: number }) {
+    const take = Math.min(opts.limit ?? 50, 200);
+    const skip = ((opts.page ?? 1) - 1) * take;
+    const where = {
+      brandId: opts.brandId,
+      ...(opts.shopId ? { shopId: opts.shopId } : {}),
+    };
+    const [records, total] = await Promise.all([
+      this.prisma.adChange.findMany({
+        where,
+        orderBy: { executedAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.adChange.count({ where }),
+    ]);
+    return { records, total, page: opts.page ?? 1, limit: take };
   }
 
   private async aggregateCampaignMetrics(

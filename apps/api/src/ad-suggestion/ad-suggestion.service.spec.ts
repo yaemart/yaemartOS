@@ -3,9 +3,12 @@ import { AdSuggestionService } from './ad-suggestion.service';
 import { PrismaClientManager } from '../database/prisma.service';
 import { GlmGenerationService } from '../ai/providers/glm-generation.service';
 import { CostTrackingService } from '../ai/cost-tracking.service';
+import { AuditService } from '../common/audit/audit.service';
 
 const makeDecimal = (value: number) =>
-  ({ toNumber: () => value }) as unknown as ReturnType<typeof Number> & {
+  ({ toNumber: () => value, toString: () => String(value) }) as unknown as ReturnType<
+    typeof Number
+  > & {
     toNumber: () => number;
   };
 
@@ -14,17 +17,35 @@ const mockCreateMany = vi.fn();
 const mockFindMany = vi.fn();
 const mockCount = vi.fn();
 const mockFindUnique = vi.fn();
+const mockUpdate = vi.fn();
+const mockChangeFindUnique = vi.fn();
+const mockChangeFindMany = vi.fn();
+const mockChangeCount = vi.fn();
+const mockChangeUpdate = vi.fn();
+const mockChangeCreate = vi.fn();
+const mockTransaction = vi.fn();
+
+const prismaClient = {
+  adDailyStat: { groupBy: mockGroupBy },
+  adSuggestion: {
+    createMany: mockCreateMany,
+    findMany: mockFindMany,
+    count: mockCount,
+    findUnique: mockFindUnique,
+    update: mockUpdate,
+  },
+  adChange: {
+    findUnique: mockChangeFindUnique,
+    findMany: mockChangeFindMany,
+    count: mockChangeCount,
+    update: mockChangeUpdate,
+    create: mockChangeCreate,
+  },
+  $transaction: mockTransaction,
+};
 
 const prismaManager = {
-  getPublicClient: () => ({
-    adDailyStat: { groupBy: mockGroupBy },
-    adSuggestion: {
-      createMany: mockCreateMany,
-      findMany: mockFindMany,
-      count: mockCount,
-      findUnique: mockFindUnique,
-    },
-  }),
+  getPublicClient: () => prismaClient,
 } as unknown as PrismaClientManager;
 
 const glm = {
@@ -35,6 +56,10 @@ const costTracking = {
   record: vi.fn().mockResolvedValue(undefined),
 } as unknown as CostTrackingService;
 
+const audit = {
+  logWrite: vi.fn().mockResolvedValue(undefined),
+} as unknown as AuditService;
+
 describe('AdSuggestionService', () => {
   let service: AdSuggestionService;
 
@@ -44,9 +69,20 @@ describe('AdSuggestionService', () => {
     mockFindMany.mockReset();
     mockCount.mockReset();
     mockFindUnique.mockReset();
+    mockUpdate.mockReset();
+    mockChangeFindUnique.mockReset();
+    mockChangeFindMany.mockReset();
+    mockChangeCount.mockReset();
+    mockChangeUpdate.mockReset();
+    mockChangeCreate.mockReset();
+    mockTransaction.mockReset();
+    mockTransaction.mockImplementation(async (fn: (tx: typeof prismaClient) => unknown) =>
+      fn(prismaClient),
+    );
     (glm.generateJson as ReturnType<typeof vi.fn>).mockReset();
     (costTracking.record as ReturnType<typeof vi.fn>).mockClear();
-    service = new AdSuggestionService(prismaManager, glm, costTracking);
+    (audit.logWrite as ReturnType<typeof vi.fn>).mockClear();
+    service = new AdSuggestionService(prismaManager, glm, costTracking, audit);
   });
 
   describe('generate', () => {
@@ -186,6 +222,125 @@ describe('AdSuggestionService', () => {
       mockFindUnique.mockResolvedValue({ id: 's1', brandId: 'homtone' });
       const result = await service.findOne('s1', 'homtone');
       expect(result.id).toBe('s1');
+    });
+  });
+
+  describe('execute', () => {
+    it('marks pending suggestion as executed and creates an AdChange', async () => {
+      const future = new Date(Date.now() + 86_400_000);
+      mockFindUnique.mockResolvedValue({
+        id: 's1',
+        brandId: 'homtone',
+        status: 'pending',
+        expiresAt: future,
+        shopId: 'shop-1',
+        campaignId: 'c1',
+        actionType: 'decrease_bid',
+        field: 'bid',
+        currentValue: makeDecimal(1.5),
+        suggestedValue: makeDecimal(1.2),
+        adType: 'sp',
+        campaignName: 'C1',
+        reason: 'r',
+      });
+      mockUpdate.mockResolvedValue({ status: 'executed' });
+      mockChangeCreate.mockResolvedValue({ id: 'ch1' });
+
+      const result = await service.execute('s1', 'homtone', 'user-1');
+
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockChangeCreate).toHaveBeenCalled();
+      expect(audit.logWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ads.suggestion.execute' }),
+      );
+      expect(result.change.id).toBe('ch1');
+    });
+
+    it('rejects execution if suggestion is not pending', async () => {
+      mockFindUnique.mockResolvedValue({
+        id: 's1',
+        brandId: 'homtone',
+        status: 'executed',
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+      await expect(service.execute('s1', 'homtone')).rejects.toThrow(/cannot execute/);
+    });
+
+    it('rejects execution if suggestion has expired', async () => {
+      mockFindUnique.mockResolvedValue({
+        id: 's1',
+        brandId: 'homtone',
+        status: 'pending',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(service.execute('s1', 'homtone')).rejects.toThrow(/expired/);
+    });
+  });
+
+  describe('reject', () => {
+    it('marks pending suggestion as rejected', async () => {
+      mockFindUnique.mockResolvedValue({
+        id: 's1',
+        brandId: 'homtone',
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+      mockUpdate.mockResolvedValue({ id: 's1', status: 'rejected' });
+
+      const result = await service.reject('s1', 'homtone', 'user-1');
+
+      expect(result.status).toBe('rejected');
+      expect(audit.logWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ads.suggestion.reject' }),
+      );
+    });
+  });
+
+  describe('rollback', () => {
+    it('rolls back an executed change within the 24h window', async () => {
+      mockChangeFindUnique.mockResolvedValue({
+        id: 'ch1',
+        brandId: 'homtone',
+        status: 'executed',
+        suggestionId: 's1',
+        reversibleBefore: new Date(Date.now() + 3600_000),
+        valueBefore: makeDecimal(1.5),
+        valueAfter: makeDecimal(1.2),
+      });
+      mockChangeUpdate.mockResolvedValue({ id: 'ch1', status: 'rolled_back' });
+      mockUpdate.mockResolvedValue({ id: 's1', status: 'pending' });
+
+      const result = await service.rollback('ch1', 'homtone', 'user-1');
+
+      expect(result.status).toBe('rolled_back');
+      expect(audit.logWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ads.change.rollback' }),
+      );
+    });
+
+    it('rejects rollback past the 24h window', async () => {
+      mockChangeFindUnique.mockResolvedValue({
+        id: 'ch1',
+        brandId: 'homtone',
+        status: 'executed',
+        reversibleBefore: new Date(Date.now() - 1000),
+      });
+      await expect(service.rollback('ch1', 'homtone')).rejects.toThrow(/24h rollback window/);
+    });
+
+    it('rejects rollback when already rolled back', async () => {
+      mockChangeFindUnique.mockResolvedValue({
+        id: 'ch1',
+        brandId: 'homtone',
+        status: 'rolled_back',
+        reversibleBefore: new Date(Date.now() + 3600_000),
+      });
+      await expect(service.rollback('ch1', 'homtone')).rejects.toThrow(/cannot rollback/);
+    });
+
+    it('throws NotFound when brand mismatches', async () => {
+      mockChangeFindUnique.mockResolvedValue({ id: 'ch1', brandId: 'spoonlemon' });
+      await expect(service.rollback('ch1', 'homtone')).rejects.toThrow();
     });
   });
 });
