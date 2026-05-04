@@ -28,6 +28,7 @@ import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 import { AdminModule } from './admin/admin.module';
 import { AdSyncModule } from './ad-sync/ad-sync.module';
 import { AdDashboardModule } from './ad-dashboard/ad-dashboard.module';
+import { AdSuggestionModule } from './ad-suggestion/ad-suggestion.module';
 import { MetricModule } from './metric/metric.module';
 
 @Module({
@@ -94,6 +95,7 @@ import { MetricModule } from './metric/metric.module';
     AdminModule,
     AdSyncModule,
     AdDashboardModule,
+    AdSuggestionModule,
     MetricModule,
   ],
   providers: [

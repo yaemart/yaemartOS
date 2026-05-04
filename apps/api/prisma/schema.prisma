@@ -111,6 +111,32 @@ enum AdType {
   @@schema("public")
 }
 
+enum AdActionType {
+  increase_bid
+  decrease_bid
+  pause
+  enable
+
+  @@schema("public")
+}
+
+enum AdSuggestionStatus {
+  pending
+  accepted
+  rejected
+  executed
+  expired
+
+  @@schema("public")
+}
+
+enum AdChangeStatus {
+  executed
+  rolled_back
+
+  @@schema("public")
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -407,9 +433,11 @@ model Shop {
   brand        Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
   market       Market         @relation(fields: [marketId], references: [id], onDelete: Cascade)
   platform     Platform       @relation(fields: [platformId], references: [id], onDelete: Cascade)
-  binding      ShopBinding?
-  listings     Listing[]
-  adDailyStats AdDailyStat[]
+  binding       ShopBinding?
+  listings      Listing[]
+  adDailyStats  AdDailyStat[]
+  adSuggestions AdSuggestion[]
+  adChanges     AdChange[]
 
   @@unique([platformId, externalId])
   @@schema("public")
@@ -454,6 +482,62 @@ model AdDailyStat {
   @@index([shopId, date, adType])
   @@index([shopId, date])
   @@index([date])
+  @@schema("public")
+}
+
+model AdSuggestion {
+  id              String             @id @default(cuid())
+  batchId         String
+  shopId          String
+  brandId         String
+  campaignId      String
+  campaignName    String?
+  adType          AdType
+  actionType      AdActionType
+  field           String
+  currentValue    Decimal?           @db.Decimal(12, 6)
+  suggestedValue  Decimal?           @db.Decimal(12, 6)
+  reason          String
+  status          AdSuggestionStatus @default(pending)
+  generatedBy     String?
+  expiresAt       DateTime
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  shop    Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  changes AdChange[]
+
+  @@index([shopId, status])
+  @@index([brandId, status])
+  @@index([batchId])
+  @@index([expiresAt])
+  @@schema("public")
+}
+
+model AdChange {
+  id                String         @id @default(cuid())
+  suggestionId      String?
+  shopId            String
+  brandId           String
+  campaignId        String
+  actionType        AdActionType
+  field             String
+  valueBefore       Decimal?       @db.Decimal(12, 6)
+  valueAfter        Decimal?       @db.Decimal(12, 6)
+  executedAt        DateTime       @default(now())
+  executedBy        String?
+  reversibleBefore  DateTime
+  rolledBackAt      DateTime?
+  rolledBackBy      String?
+  status            AdChangeStatus @default(executed)
+  metadata          Json?
+
+  suggestion AdSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
+  shop       Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, executedAt])
+  @@index([brandId, status])
+  @@index([reversibleBefore])
   @@schema("public")
 }
 
