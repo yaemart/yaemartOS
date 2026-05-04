@@ -451,6 +451,7 @@ model AdDailyStat {
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
   @@unique([shopId, date, adType, campaignId])
+  @@index([shopId, date, adType])
   @@index([shopId, date])
   @@index([date])
   @@schema("public")

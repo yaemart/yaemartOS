@@ -43,10 +43,6 @@ export class AdDashboardQueryDto {
 
   @IsOptional()
   @IsString()
-  brandId?: string;
-
-  @IsOptional()
-  @IsString()
   shopId?: string;
 
   @IsOptional()

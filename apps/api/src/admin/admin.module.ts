@@ -9,6 +9,7 @@ import { AdminManualService } from './manual/admin-manual.service';
 import { AdminWarrantyController } from './warranty/admin-warranty.controller';
 import { AdminWarrantyService } from './warranty/admin-warranty.service';
 import { AdminOrderLookupController } from './order-lookup/admin-order-lookup.controller';
+import { AdminCustomerController } from './customer/admin-customer.controller';
 
 @Module({
   imports: [IamModule, DatabaseModule, CloudinaryModule],
@@ -17,6 +18,7 @@ import { AdminOrderLookupController } from './order-lookup/admin-order-lookup.co
     AdminManualController,
     AdminWarrantyController,
     AdminOrderLookupController,
+    AdminCustomerController,
   ],
   providers: [TicketAggregationService, AdminManualService, AdminWarrantyService],
 })

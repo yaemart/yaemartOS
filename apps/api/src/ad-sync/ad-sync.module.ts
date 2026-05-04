@@ -22,13 +22,18 @@ export class AdSyncModule implements OnModuleInit {
   constructor(@InjectQueue(AD_SYNC_QUEUE) private readonly dispatchQueue: Queue) {}
 
   async onModuleInit(): Promise<void> {
+    const CRON_PATTERN = '0 1 * * *';
+
+    // Clean up stale repeat schedules (e.g. pattern changed, leftover from rolling deployments)
+    // before re-registering, so multi-instance K8s restarts don't accumulate duplicates.
+    const existing = await this.dispatchQueue.getRepeatableJobs();
+    const stale = existing.filter((j) => j.name === AD_DISPATCH_JOB && j.pattern !== CRON_PATTERN);
+    await Promise.all(stale.map((j) => this.dispatchQueue.removeRepeatableByKey(j.key)));
+
     await this.dispatchQueue.add(
       AD_DISPATCH_JOB,
       {},
-      {
-        repeat: { pattern: '0 1 * * *' },
-        jobId: 'daily-ad-dispatch',
-      },
+      { repeat: { pattern: CRON_PATTERN }, jobId: 'daily-ad-dispatch' },
     );
     this.logger.log('Registered daily ad-sync dispatch cron (01:00 UTC)');
   }

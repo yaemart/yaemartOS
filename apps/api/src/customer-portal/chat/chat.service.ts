@@ -192,34 +192,70 @@ export class ChatService implements OnModuleDestroy {
     const faqChunks = await this.faqKnowledge.search(content, brandId, locale, 5);
     const faqContext = faqChunks.map((c) => `Q: ${c.question}\nA: ${c.answer}`).join('\n\n');
 
-    const [brandConfig, customerCtx] = await Promise.all([
+    const [brandConfig, openTickets, recentOrders] = await Promise.all([
       this.tenantDb.systemConfig
         .findFirst({ where: { key: 'brand.displayName' }, select: { value: true } })
         .catch(() => null),
       session.customerId
-        ? this.tenantDb.ticket
-            .count({
-              where: { customerId: session.customerId, status: { in: ['open', 'pending'] } },
+        ? (this.tenantDb as any).ticket
+            .findMany({
+              where: {
+                customerId: session.customerId,
+                status: { in: ['open', 'pending', 'in_progress'] },
+              },
+              select: { id: true, ticketNo: true, subject: true, status: true },
+              orderBy: { createdAt: 'desc' },
+              take: 5,
             })
-            .catch(() => 0)
-        : Promise.resolve(0),
+            .catch(() => [])
+        : Promise.resolve([]),
+      session.customerId
+        ? (this.tenantDb as any).orderLookup
+            .findMany({
+              where: { customerId: session.customerId },
+              select: { orderNumber: true, resultStatus: true, createdAt: true },
+              orderBy: { createdAt: 'desc' },
+              take: 3,
+            })
+            .catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     const brandDisplayName =
       (brandConfig?.value as string | undefined) ??
       brandId.charAt(0).toUpperCase() + brandId.slice(1);
 
-    const customerSection = session.customerId
-      ? `Current customer ID: ${session.customerId}. Open/pending support tickets: ${customerCtx}.`
-      : 'Customer is browsing anonymously (not logged in).';
+    let customerSection: string;
+    if (!session.customerId) {
+      customerSection = 'Customer is browsing anonymously (not logged in).';
+    } else {
+      const ticketLines =
+        (openTickets as Array<{ ticketNo: string; subject: string; status: string }>).length > 0
+          ? (openTickets as Array<{ ticketNo: string; subject: string; status: string }>)
+              .map((t) => `  - [${t.ticketNo}] ${t.subject} (${t.status})`)
+              .join('\n')
+          : '  (none)';
+      const orderLines =
+        (recentOrders as Array<{ orderNumber: string; resultStatus: string | null }>).length > 0
+          ? (recentOrders as Array<{ orderNumber: string; resultStatus: string | null }>)
+              .map((o) => `  - Order #${o.orderNumber}: ${o.resultStatus ?? 'unknown status'}`)
+              .join('\n')
+          : '  (no recent order lookups)';
+      customerSection = [
+        `Logged-in customer ID: ${session.customerId}`,
+        `Open/active support tickets:\n${ticketLines}`,
+        `Recent order lookups (last 3):\n${orderLines}`,
+      ].join('\n');
+    }
 
+    const hasOpenTickets = (openTickets as unknown[]).length > 0;
     const systemPrompt = [
       `You are a helpful customer support assistant for ${brandDisplayName}, a cross-border e-commerce brand.`,
       `Always respond in the language matching locale: ${locale}.`,
       customerSection,
       `Your support scope: product questions, order status inquiries, warranty and returns, and general brand FAQs.`,
       `Out of scope (do not attempt): pricing negotiations, account modifications, legal disputes — for these, let the customer know you will connect them with a human agent.`,
-      `Escalation policy: if the customer has ${customerCtx > 0 ? 'open tickets, acknowledge them and offer to help or escalate' : 'no open tickets and you cannot help, offer to create a support ticket'}.`,
+      `Escalation policy: ${hasOpenTickets ? 'the customer has open tickets — acknowledge them and offer to continue or escalate' : 'if you cannot help, offer to create a support ticket for follow-up'}.`,
       faqContext
         ? `Relevant knowledge base entries:\n${faqContext}`
         : 'No matching knowledge base entries found for this query.',

@@ -15,12 +15,20 @@ const mockPrismaManager = {
   }),
 } as unknown as PrismaClientManager;
 
+const BASE_DTO = {
+  startDate: '2026-04-01',
+  endDate: '2026-04-03',
+  brandId: 'homtone',
+};
+
 describe('AdDashboardService', () => {
   let service: AdDashboardService;
 
   beforeEach(() => {
     mockGroupBy.mockReset();
     mockShopFindMany.mockReset();
+    // Default: brand has one shop
+    mockShopFindMany.mockResolvedValue([{ id: 'shop-1' }]);
     service = new AdDashboardService(mockPrismaManager);
   });
 
@@ -63,10 +71,7 @@ describe('AdDashboardService', () => {
       ];
       mockGroupBy.mockResolvedValue(rows);
 
-      const result = await service.queryDashboard({
-        startDate: '2026-04-01',
-        endDate: '2026-04-03',
-      });
+      const result = await service.queryDashboard({ ...BASE_DTO });
 
       expect(result.daily).toHaveLength(3);
       expect(result.daily[0]).toMatchObject({
@@ -94,10 +99,7 @@ describe('AdDashboardService', () => {
     it('edge case: empty data returns all zeros and null acos', async () => {
       mockGroupBy.mockResolvedValue([]);
 
-      const result = await service.queryDashboard({
-        startDate: '2026-04-01',
-        endDate: '2026-04-03',
-      });
+      const result = await service.queryDashboard({ ...BASE_DTO });
 
       expect(result.daily).toEqual([]);
       expect(result.totals).toEqual({
@@ -125,27 +127,31 @@ describe('AdDashboardService', () => {
         },
       ]);
 
-      const result = await service.queryDashboard({
-        startDate: '2026-04-01',
-        endDate: '2026-04-01',
-      });
+      const result = await service.queryDashboard({ ...BASE_DTO, endDate: '2026-04-01' });
 
       expect(result.totals.totalSales).toBe(0);
       expect(result.acos).toBeNull();
     });
 
-    it('filters by shopId when provided without brandId', async () => {
+    it('filters by shopId when provided with brandId', async () => {
+      mockShopFindMany.mockResolvedValue([{ id: 'shop-123' }]);
       mockGroupBy.mockResolvedValue([]);
 
       await service.queryDashboard({
-        startDate: '2026-04-01',
+        ...BASE_DTO,
         endDate: '2026-04-10',
         shopId: 'shop-123',
       });
 
+      // Shop lookup uses both brandId and shopId
+      expect(mockShopFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ brandId: 'homtone', id: 'shop-123' }),
+        }),
+      );
       expect(mockGroupBy).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ shopId: 'shop-123' }),
+          where: expect.objectContaining({ shopId: { in: ['shop-123'] } }),
         }),
       );
     });
@@ -154,7 +160,7 @@ describe('AdDashboardService', () => {
       mockGroupBy.mockResolvedValue([]);
 
       await service.queryDashboard({
-        startDate: '2026-04-01',
+        ...BASE_DTO,
         endDate: '2026-04-10',
         adType: 'sp',
       });
@@ -166,18 +172,27 @@ describe('AdDashboardService', () => {
       );
     });
 
-    it('brandId with no matching shops returns empty response', async () => {
+    it('brandId with no matching shops returns empty response without querying adDailyStat', async () => {
       mockShopFindMany.mockResolvedValue([]);
 
       const result = await service.queryDashboard({
-        startDate: '2026-04-01',
+        ...BASE_DTO,
         endDate: '2026-04-10',
-        brandId: 'homtone',
       });
 
       expect(result.daily).toEqual([]);
       expect(result.acos).toBeNull();
       expect(mockGroupBy).not.toHaveBeenCalled();
+    });
+
+    it('throws InternalServerErrorException when brandId is missing (defense-in-depth)', async () => {
+      await expect(
+        service.queryDashboard({
+          startDate: '2026-04-01',
+          endDate: '2026-04-03',
+          brandId: '',
+        }),
+      ).rejects.toThrow('brandId is required');
     });
   });
 });

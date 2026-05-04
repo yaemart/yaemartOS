@@ -50,14 +50,39 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'generateListingDraft',
     description:
-      'Trigger AI generation of a listing draft for the specified listing ID and locale. Returns a new draft ListingVersion. The draft must be manually activated by an operator.',
+      'Trigger AI generation of a listing draft for the specified listing ID. Returns a new draft ListingVersion. The draft must be manually activated by an operator.',
     method: 'POST',
     endpoint: '/listings/:id/generate',
     parameters: {
       id: { type: 'string', description: 'The listing ID to generate a draft for', required: true },
-      locale: {
+      productTitle: {
         type: 'string',
-        description: 'Target language locale for generation (e.g. en, de)',
+        description: 'Product title used as generation seed',
+        required: false,
+      },
+      productCategory: {
+        type: 'string',
+        description: 'Product category for AI context',
+        required: false,
+      },
+      competitorUrls: {
+        type: 'array',
+        description: 'Array of competitor listing URLs to analyse for inspiration',
+        required: false,
+      },
+      manualSellingPoints: {
+        type: 'string',
+        description: 'Operator-supplied selling points to incorporate',
+        required: false,
+      },
+      categoryLexicon: {
+        type: 'array',
+        description: 'Category-specific keywords to include',
+        required: false,
+      },
+      lingxingKeywordSeed: {
+        type: 'array',
+        description: 'Lingxing keyword seeds from keyword research',
         required: false,
       },
     },
@@ -89,20 +114,41 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'batchGenerateListings',
     description:
-      'Batch-generate listing drafts for multiple shop/platform/language combinations. Feature-flagged by MULTILINGUAL_LISTING_GENERATION. Returns per-combo results.',
+      'Batch-generate listing drafts for multiple shop/platform/language combinations. Feature-flagged by MULTILINGUAL_LISTING_GENERATION. Returns per-combo {listingId, shopId, platformCode, language, versionNumber, status} results.',
     method: 'POST',
     endpoint: '/listings/batch-generate',
     parameters: {
-      listingId: { type: 'string', description: 'The listing ID to generate for', required: true },
-      targets: {
-        type: 'array',
-        description: 'Array of {shopId, platformCode} target combinations',
+      productId: {
+        type: 'string',
+        description: 'The product ID to generate listings for',
+        required: true,
+      },
+      brandId: {
+        type: 'string',
+        description: 'Brand ID (must match authenticated brand)',
+        required: true,
+      },
+      marketId: { type: 'string', description: 'Market ID for this batch', required: true },
+      productTitle: {
+        type: 'string',
+        description: 'Product title used as generation seed',
+        required: true,
+      },
+      productCategory: {
+        type: 'string',
+        description: 'Product category for AI context',
         required: true,
       },
       languages: {
         type: 'array',
         description: 'List of language codes to generate (e.g. ["en", "de", "fr"])',
-        required: false,
+        required: true,
+      },
+      targets: {
+        type: 'array',
+        description:
+          'Array of {shopId, platformCode, platformListingId, competitorUrls?, manualSellingPoints?, categoryLexicon?, lingxingKeywordSeed?} target combinations',
+        required: true,
       },
     },
   },
@@ -231,6 +277,49 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
     },
   },
 
+  // ── Admin Customers ──────────────────────────────────────────────────────
+  {
+    name: 'listCustomers',
+    description:
+      'List customers for a brand (admin view). Returns paginated results with warranty and ticket counts. Excludes sensitive auth fields (passwordHash, tokens).',
+    method: 'GET',
+    endpoint: '/admin/customers',
+    parameters: {
+      brandId: {
+        type: 'string',
+        description: 'Brand ID to list customers for (required)',
+        required: true,
+      },
+      search: {
+        type: 'string',
+        description: 'Search by email or name (case-insensitive contains)',
+        required: false,
+      },
+      isActive: {
+        type: 'boolean',
+        description: 'Filter by account active status (true/false)',
+        required: false,
+      },
+      page: { type: 'number', description: 'Page number (default 1)', required: false },
+      limit: { type: 'number', description: 'Page size, max 100 (default 50)', required: false },
+    },
+  },
+  {
+    name: 'getCustomer',
+    description:
+      'Get a single customer by ID for a brand. Returns customer profile plus recent warranties and tickets (up to 10 each). Excludes sensitive auth fields.',
+    method: 'GET',
+    endpoint: '/admin/customers/:customerId',
+    parameters: {
+      customerId: { type: 'string', description: 'The customer ID', required: true },
+      brandId: {
+        type: 'string',
+        description: 'Brand ID (required — customers are per-brand)',
+        required: true,
+      },
+    },
+  },
+
   // ── Admin Tickets ────────────────────────────────────────────────────────
   {
     name: 'listAdminTickets',
@@ -338,7 +427,7 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'updateListing',
     description:
-      'Partially update listing metadata (shop, status, linked product) by listing ID. Does NOT update content — use generateListingDraft + activateListingVersion for content changes.',
+      'Partially update listing metadata by listing ID. Does NOT update AI-generated content — use generateListingDraft + activateListingVersion for content changes.',
     method: 'PATCH',
     endpoint: '/listings/:id',
     parameters: {
@@ -347,7 +436,37 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
       productId: { type: 'string', description: 'New product ID', required: false },
       status: {
         type: 'string',
-        description: 'New listing status: draft, active, archived',
+        description: 'New listing status: draft | active | archived',
+        required: false,
+      },
+      isPrimary: {
+        type: 'boolean',
+        description: 'Mark as primary listing for this product/shop',
+        required: false,
+      },
+      trafficStrategy: {
+        type: 'string',
+        description: 'Traffic strategy tag',
+        required: false,
+      },
+      title: {
+        type: 'string',
+        description: 'Override listing title (manual edit)',
+        required: false,
+      },
+      description: {
+        type: 'string',
+        description: 'Override description (manual edit)',
+        required: false,
+      },
+      bullets: {
+        type: 'array',
+        description: 'Override bullet points (manual edit)',
+        required: false,
+      },
+      searchTerms: {
+        type: 'string',
+        description: 'Override backend search terms',
         required: false,
       },
     },
@@ -365,11 +484,15 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'getListingMatrix',
     description:
-      'Get the listing generation matrix for a brand — all shop/platform/language combinations and their generation status. Useful for identifying gaps before batch generation.',
+      'Get the listing generation matrix for a product — all shop/platform/language combinations and their generation status. Useful for identifying gaps before batch generation.',
     method: 'GET',
     endpoint: '/listings/matrix',
     parameters: {
-      shopId: { type: 'string', description: 'Optionally filter matrix by shop', required: false },
+      productId: {
+        type: 'string',
+        description: 'The product ID to get the matrix for',
+        required: true,
+      },
     },
   },
 
@@ -431,18 +554,22 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'updateProductContent',
     description:
-      'Replace the full product content (description, features, images, attributes). Overwrites the existing content block.',
+      'Replace the full product content for a given locale. Body is {locale, payload} where payload is a free-form JSON object containing content fields (description, bulletPoints, imageUrls, attributes, etc.).',
     method: 'PUT',
     endpoint: '/products/:id/content',
     parameters: {
       id: { type: 'string', description: 'The product ID', required: true },
-      description: { type: 'string', description: 'Full product description', required: false },
-      bulletPoints: {
-        type: 'array',
-        description: 'List of bullet-point feature strings',
-        required: false,
+      locale: {
+        type: 'string',
+        description: 'Content locale: en | es | fr | de | it',
+        required: true,
       },
-      imageUrls: { type: 'array', description: 'Ordered list of image URLs', required: false },
+      payload: {
+        type: 'object',
+        description:
+          'Content payload — free-form object. Common keys: description (string), bulletPoints (string[]), imageUrls (string[]), attributes (object)',
+        required: true,
+      },
     },
   },
   {
@@ -539,14 +666,20 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   {
     name: 'updateCategoryTemplate',
     description:
-      'Set or replace the listing generation template for a category. Template drives AI field constraints during generation.',
+      'Set or replace the listing generation template for a category and locale. The body is a free-form JSON object whose keys are field names (e.g. titleTemplate, bulletsTemplate, faqTemplate). Template drives AI field constraints during generation.',
     method: 'PUT',
     endpoint: '/categories/:id/template',
     parameters: {
       id: { type: 'string', description: 'The category ID', required: true },
-      fields: {
-        type: 'array',
-        description: 'Array of field definitions with name, maxLength, required, and hint',
+      locale: {
+        type: 'string',
+        description: 'Template locale: en | es | fr | de | it (query param)',
+        required: false,
+      },
+      template: {
+        type: 'object',
+        description:
+          'Free-form template object. Common keys: titleTemplate (string), bulletsTemplate (object), descriptionTemplate (string), faqTemplate (object)',
         required: true,
       },
     },
@@ -616,13 +749,23 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
   },
   {
     name: 'updateShopBinding',
-    description: 'Update or change the Lingxing binding configuration for a shop.',
+    description: 'Update the Lingxing binding configuration for a shop, or unbind it entirely.',
     method: 'PATCH',
     endpoint: '/shops/:id/binding',
     parameters: {
       id: { type: 'string', description: 'The shop ID', required: true },
-      lingxingShopId: { type: 'string', description: 'New Lingxing shop ID', required: false },
-      syncEnabled: { type: 'boolean', description: 'Enable or disable sync', required: false },
+      lingxingShopId: {
+        type: 'string',
+        description: 'New Lingxing shop ID to rebind to',
+        required: false,
+      },
+      syncEnabled: { type: 'boolean', description: 'Enable or disable data sync', required: false },
+      unbind: {
+        type: 'boolean',
+        description:
+          'Set to true to remove the Lingxing binding entirely (equivalent to calling unbindShop)',
+        required: false,
+      },
     },
   },
   {
@@ -827,10 +970,10 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
     endpoint: '/settings/brands/:id',
     parameters: {
       id: { type: 'string', description: 'The brand ID', required: true },
-      displayName: { type: 'string', description: 'Brand display name', required: false },
-      primaryColor: {
+      name: { type: 'string', description: 'Brand display name', required: false },
+      themeColor: {
         type: 'string',
-        description: 'CSS hex color for primary brand color',
+        description: 'CSS hex color for the primary brand theme (e.g. #1a73e8)',
         required: false,
       },
       logoUrl: { type: 'string', description: 'URL of the brand logo', required: false },
@@ -898,6 +1041,204 @@ export const YAEMARTOS_TOOL_DESCRIPTORS: YaemartOsToolDescriptor[] = [
         type: 'array',
         description: 'Array of {term, definition} objects to import',
         required: true,
+      },
+    },
+  },
+  // ── Migration ────────────────────────────────────────────────────────────
+  {
+    name: 'listMigrationAvailableShops',
+    description:
+      'List Lingxing-bound shops available for Path A import, filtered by brandId (from x-yaemart-brand header) and platformCode. Used to populate the shop picker before triggering an import.',
+    method: 'GET',
+    endpoint: '/migration/path-a/shops',
+    parameters: {
+      platformCode: {
+        type: 'string',
+        description: 'Platform to filter by (e.g. amazon, walmart). Must be a valid PlatformCode.',
+        required: true,
+      },
+    },
+  },
+  {
+    name: 'triggerPathAImport',
+    description:
+      'Queue a Path A data import job for specified shops. Returns {jobId, runId, status}. Poll getPathAImportJob for progress. Requires migration:write permission.',
+    method: 'POST',
+    endpoint: '/migration/path-a/jobs',
+    parameters: {
+      brandId: { type: 'string', description: 'Brand ID to import data for', required: true },
+      marketCode: { type: 'string', description: 'Market code (e.g. us, de)', required: true },
+      platformCode: {
+        type: 'string',
+        description: 'Platform code (e.g. amazon, walmart)',
+        required: true,
+      },
+      shopIds: {
+        type: 'array',
+        description: 'Array of Lingxing shop IDs to import from',
+        required: true,
+      },
+    },
+  },
+  {
+    name: 'getPathAImportJob',
+    description:
+      'Get the status and progress of a Path A import job. Returns {jobId, runId, status, progress (0-100), imported, failed, failures, error}.',
+    method: 'GET',
+    endpoint: '/migration/path-a/jobs/:jobId',
+    parameters: {
+      jobId: {
+        type: 'string',
+        description: 'The BullMQ job ID returned by triggerPathAImport',
+        required: true,
+      },
+    },
+  },
+  {
+    name: 'listPathAImportJobs',
+    description:
+      'List recent Path A import jobs grouped by status (waiting, active, completed, failed). Returns up to 10 per status.',
+    method: 'GET',
+    endpoint: '/migration/path-a/jobs',
+    parameters: {},
+  },
+
+  {
+    name: 'getAdDashboard',
+    description:
+      'Query aggregated advertising performance data (spend, sales, ACOS, CTR, CVR) for the authenticated brand. Returns daily buckets and overall totals grouped by ad type (SP/SD/SB/Walmart). Requires feature flag AD_DASHBOARD to be enabled.',
+    method: 'GET',
+    endpoint: '/ads/dashboard',
+    parameters: {
+      startDate: {
+        type: 'string',
+        description: 'Start date (YYYY-MM-DD). Must be within 90 days of endDate.',
+        required: true,
+      },
+      endDate: {
+        type: 'string',
+        description: 'End date (YYYY-MM-DD, inclusive). Must be >= startDate.',
+        required: true,
+      },
+      shopId: {
+        type: 'string',
+        description: 'Filter to a specific shop ID. Omit to aggregate across all brand shops.',
+        required: false,
+      },
+      adType: {
+        type: 'string',
+        description:
+          'Filter to a specific ad type: sp | sd | sb | walmart_sp. Omit to aggregate all.',
+        required: false,
+      },
+    },
+  },
+  {
+    name: 'triggerAdSync',
+    description:
+      'Manually trigger an advertising data sync for a specific shop on a given date. Useful for backfilling missed days or re-syncing after a Lingxing API outage. brandId is resolved from the authenticated user context.',
+    method: 'POST',
+    endpoint: '/ads/sync',
+    parameters: {
+      shopId: {
+        type: 'string',
+        description: 'The shop ID to sync ad data for.',
+        required: true,
+      },
+      date: {
+        type: 'string',
+        description: 'The date to sync (YYYY-MM-DD).',
+        required: true,
+      },
+    },
+  },
+
+  // ── Terminology (single-entry read) ──────────────────────────────────────
+  {
+    name: 'getTerminologyEntry',
+    description:
+      'Get a single terminology entry by its ID. Returns term, definition, locale, brandId, and timestamps. Useful for verifying or quoting a specific term before updating it.',
+    method: 'GET',
+    endpoint: '/terminology/:id',
+    parameters: {
+      id: { type: 'string', description: 'The terminology entry ID', required: true },
+    },
+  },
+
+  // ── Order Lookup History ──────────────────────────────────────────────────
+  {
+    name: 'listOrderLookupHistory',
+    description:
+      'List cached order-lookup records for a brand. These are orders that customers (or operators) have previously queried. Useful for agents to see what orders are being tracked and their last-known status. Requires admin auth + order_lookup:read permission.',
+    method: 'GET',
+    endpoint: '/admin/order-lookup/history',
+    parameters: {
+      brandId: {
+        type: 'string',
+        description: 'Brand slug to query lookup history for (required)',
+        required: true,
+      },
+      customerId: {
+        type: 'string',
+        description: 'Filter to a specific customer ID',
+        required: false,
+      },
+      page: { type: 'number', description: 'Page number (default: 1)', required: false },
+      limit: {
+        type: 'number',
+        description: 'Items per page (max 100, default: 20)',
+        required: false,
+      },
+    },
+  },
+
+  // ── Metrics ───────────────────────────────────────────────────────────────
+  {
+    name: 'listMetrics',
+    description:
+      'List recorded operational metric values (KPIs, health indicators, business counters). Filter by name or brandId. Returns up to 200 most-recent entries. Useful for agents to read current KPI values before making decisions.',
+    method: 'GET',
+    endpoint: '/metrics',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Filter to a specific metric name (e.g. "listing.generate.cost_usd")',
+        required: false,
+      },
+      brandId: { type: 'string', description: 'Filter to a specific brand', required: false },
+      limit: {
+        type: 'number',
+        description: 'Max results to return (default: 50, max: 200)',
+        required: false,
+      },
+    },
+  },
+  {
+    name: 'recordMetric',
+    description:
+      'Record a new metric data point (numeric value with optional unit and brandId). Use to log operational KPIs, cost counters, or any measurable event that agents or automation should track over time.',
+    method: 'POST',
+    endpoint: '/metrics',
+    parameters: {
+      name: {
+        type: 'string',
+        description: 'Metric name slug (e.g. "listing.generate.cost_usd", "sync.errors.daily")',
+        required: true,
+      },
+      value: {
+        type: 'number',
+        description: 'Numeric value to record',
+        required: true,
+      },
+      unit: {
+        type: 'string',
+        description: 'Optional unit label (e.g. "usd", "count", "ms")',
+        required: false,
+      },
+      brandId: {
+        type: 'string',
+        description: 'Optional brand slug to associate this metric with',
+        required: false,
       },
     },
   },

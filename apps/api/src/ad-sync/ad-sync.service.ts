@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AdType } from '../generated/prisma';
 import { PrismaClientManager } from '../database/prisma.service';
 import { LingxingClient } from '@yaemartos/lingxing-client';
-import type { AdReportFetchResult, MappedAdReport } from '@yaemartos/lingxing-client';
+import type { AdReportFetchResult } from '@yaemartos/lingxing-client';
 
 export type AdTypeStatus = 'ok' | 'skipped' | 'error';
 
@@ -13,12 +13,7 @@ export interface SyncShopResult {
   walmart_sp: AdTypeStatus;
 }
 
-interface UpsertAdStatInput {
-  shopId: string;
-  date: Date;
-  adType: AdType;
-  record: MappedAdReport;
-}
+const WALMART_PLATFORM_CODE = 'walmart';
 
 @Injectable()
 export class AdSyncService {
@@ -42,7 +37,7 @@ export class AdSyncService {
       return { sp: 'error', sd: 'error', sb: 'error', walmart_sp: 'error' };
     }
 
-    const isWalmart = shop.platform.code === 'walmart';
+    const isWalmart = shop.platform.code === WALMART_PLATFORM_CODE;
     const result: SyncShopResult = {
       sp: 'skipped',
       sd: 'skipped',
@@ -75,14 +70,14 @@ export class AdSyncService {
       totalSpend += spStatus.spend + sdStatus.spend + sbStatus.spend;
     }
 
-    await prisma.metric.create({
-      data: {
-        name: `ad.spend.${shopId}.${date}`,
-        value: totalSpend,
-        unit: 'USD',
-        brandId,
-      },
-    });
+    // Idempotent metric write: delete any prior record for this shopId+date before creating fresh one.
+    // Metric table is a time-series store (no unique constraint on name) so we manage idempotency
+    // explicitly to avoid duplicate rows on BullMQ retry (attempts: 3).
+    const metricName = `ad.spend.${shopId}.${date}`;
+    await prisma.$transaction([
+      prisma.metric.deleteMany({ where: { name: metricName } }),
+      prisma.metric.create({ data: { name: metricName, value: totalSpend, unit: 'USD', brandId } }),
+    ]);
 
     this.logger.log(
       `syncShopDate shopId=${shopId} date=${date} totalSpend=${totalSpend} result=${JSON.stringify(result)}`,
@@ -105,51 +100,48 @@ export class AdSyncService {
       }
 
       const prisma = this.prismaManager.getPublicClient();
-      const dateObj = new Date(date);
-      let totalSpend = 0;
+      // Use UTC midnight to avoid local timezone shifts (e.g. UTC+9 turning '2026-05-03' into May 2)
+      const dateObj = new Date(date + 'T00:00:00.000Z');
+      const totalSpend = fetchResult.records.reduce((sum, r) => sum + r.spend, 0);
 
-      const inputs: UpsertAdStatInput[] = fetchResult.records.map((record) => ({
-        shopId,
-        date: dateObj,
-        adType,
-        record,
-      }));
-
-      for (const input of inputs) {
-        await prisma.adDailyStat.upsert({
-          where: {
-            shopId_date_adType_campaignId: {
-              shopId: input.shopId,
-              date: input.date,
-              adType: input.adType,
-              campaignId: input.record.campaignId,
+      // Batch all upserts in a single transaction instead of N sequential awaits.
+      // For ~100 campaigns this is ~5-10x faster than sequential await inside a loop.
+      await prisma.$transaction(
+        fetchResult.records.map((record) =>
+          prisma.adDailyStat.upsert({
+            where: {
+              shopId_date_adType_campaignId: {
+                shopId,
+                date: dateObj,
+                adType,
+                campaignId: record.campaignId,
+              },
             },
-          },
-          create: {
-            shopId: input.shopId,
-            date: input.date,
-            adType: input.adType,
-            campaignId: input.record.campaignId,
-            campaignName: input.record.campaignName,
-            spend: input.record.spend,
-            sales: input.record.sales,
-            impressions: input.record.impressions,
-            clicks: input.record.clicks,
-            orders: input.record.orders,
-            syncedAt: new Date(),
-          },
-          update: {
-            campaignName: input.record.campaignName,
-            spend: input.record.spend,
-            sales: input.record.sales,
-            impressions: input.record.impressions,
-            clicks: input.record.clicks,
-            orders: input.record.orders,
-            syncedAt: new Date(),
-          },
-        });
-        totalSpend += input.record.spend;
-      }
+            create: {
+              shopId,
+              date: dateObj,
+              adType,
+              campaignId: record.campaignId,
+              campaignName: record.campaignName,
+              spend: record.spend,
+              sales: record.sales,
+              impressions: record.impressions,
+              clicks: record.clicks,
+              orders: record.orders,
+              syncedAt: new Date(),
+            },
+            update: {
+              campaignName: record.campaignName,
+              spend: record.spend,
+              sales: record.sales,
+              impressions: record.impressions,
+              clicks: record.clicks,
+              orders: record.orders,
+              syncedAt: new Date(),
+            },
+          }),
+        ),
+      );
 
       return { status: 'ok', spend: totalSpend };
     } catch (err) {

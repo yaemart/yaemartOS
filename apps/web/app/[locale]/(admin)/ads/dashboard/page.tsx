@@ -24,17 +24,24 @@ export default async function AdDashboardPage({
   const endDate = searchParams?.endDate ?? format(new Date(), 'yyyy-MM-dd');
   const startDate = searchParams?.startDate ?? format(subDays(new Date(), 6), 'yyyy-MM-dd');
 
-  const data = await fetchAdDashboard(
-    guard.accessToken,
-    {
-      brandId: guard.user.brandId,
-      shopId: searchParams?.shopId,
-      adType: searchParams?.adType,
-      startDate,
-      endDate,
-    },
-    guard.user.brandId,
-  ).catch(() => null);
+  // Separate null (feature disabled / 403) from thrown errors (network, 5xx) so the UI
+  // can show a meaningful message instead of always saying "feature not enabled".
+  let data: Awaited<ReturnType<typeof fetchAdDashboard>> = null;
+  let fetchError: string | null = null;
+  try {
+    data = await fetchAdDashboard(
+      guard.accessToken,
+      {
+        shopId: searchParams?.shopId,
+        adType: searchParams?.adType,
+        startDate,
+        endDate,
+      },
+      guard.user.brandId,
+    );
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : '数据加载失败，请稍后重试';
+  }
 
   return (
     <div className="space-y-6">
@@ -44,6 +51,9 @@ export default async function AdDashboardPage({
       </div>
       <AdDashboardClient
         data={data}
+        fetchError={fetchError}
+        accessToken={guard.accessToken}
+        brandId={guard.user.brandId}
         searchParams={{ startDate, endDate, adType: searchParams?.adType }}
       />
     </div>

@@ -27,12 +27,19 @@ const makeAdReportResult = (
 const makeService = () => {
   const adDailyStatUpsert = vi.fn().mockResolvedValue({});
   const metricCreate = vi.fn().mockResolvedValue({});
+  const metricDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
   const shopFindUnique = vi.fn();
+
+  // $transaction receives an array of promises; resolve them all so individual mocks are tracked
+  const mockTransaction = vi
+    .fn()
+    .mockImplementation((ops: unknown) => Promise.all(ops as Promise<unknown>[]));
 
   const prismaPublicClient = {
     adDailyStat: { upsert: adDailyStatUpsert },
-    metric: { create: metricCreate },
+    metric: { create: metricCreate, deleteMany: metricDeleteMany },
     shop: { findUnique: shopFindUnique },
+    $transaction: mockTransaction,
   };
 
   const prismaManager = {
@@ -61,6 +68,8 @@ const makeService = () => {
       shopFindUnique,
       adDailyStatUpsert,
       metricCreate,
+      metricDeleteMany,
+      mockTransaction,
       getSpCampaignReport,
       getSdCampaignReport,
       getSbCampaignReport,
@@ -104,6 +113,10 @@ describe('AdSyncService', () => {
         }),
       );
 
+      // Metric write is idempotent: deleteMany (remove stale) + create (fresh value) in one transaction
+      expect(mocks.metricDeleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { name: 'ad.spend.shop-1.2026-05-03' } }),
+      );
       expect(mocks.metricCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -158,7 +171,8 @@ describe('AdSyncService', () => {
       expect(result.sd).toBe('error');
       expect(result.sb).toBe('ok');
       expect(mocks.adDailyStatUpsert).toHaveBeenCalledTimes(2); // sp + sb only
-      expect(mocks.metricCreate).toHaveBeenCalled(); // metric still written
+      expect(mocks.metricDeleteMany).toHaveBeenCalled(); // metric idempotent write
+      expect(mocks.metricCreate).toHaveBeenCalled();
     });
 
     it('Walmart shop: only calls getWalmartCampaignReport, skips SP/SD/SB', async () => {

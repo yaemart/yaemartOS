@@ -3,7 +3,6 @@ import type { AdDashboardResponse } from '@yaemartos/shared-types';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export interface AdDashboardParams {
-  brandId?: string;
   shopId?: string;
   adType?: string;
   startDate: string;
@@ -16,9 +15,6 @@ export async function fetchAdDashboard(
   brandId: string,
 ): Promise<AdDashboardResponse | null> {
   const qs = new URLSearchParams();
-  if (params.brandId) {
-    qs.set('brandId', params.brandId);
-  }
   if (params.shopId) {
     qs.set('shopId', params.shopId);
   }
@@ -38,6 +34,7 @@ export async function fetchAdDashboard(
   });
 
   if (res.status === 403) {
+    // Feature flag disabled — return null so caller can render "feature not enabled" UI
     return null;
   }
   if (!res.ok) {

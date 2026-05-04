@@ -8,8 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AdLineChart } from '@/components/charts/line-chart';
 import { AdBarChart } from '@/components/charts/bar-chart';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
 interface AdDashboardClientProps {
   data: AdDashboardResponse | null;
+  fetchError?: string | null;
+  accessToken?: string;
+  brandId?: string;
   searchParams: {
     startDate?: string;
     endDate?: string;
@@ -25,7 +30,13 @@ const AD_TYPE_OPTIONS = [
   { value: 'walmart_sp', label: 'Walmart SP' },
 ];
 
-export function AdDashboardClient({ data, searchParams }: AdDashboardClientProps) {
+export function AdDashboardClient({
+  data,
+  fetchError,
+  accessToken,
+  brandId,
+  searchParams,
+}: AdDashboardClientProps) {
   const router = useRouter();
   const params = useParams<{ locale?: string }>();
   const localePrefix = params?.locale ? `/${params.locale}` : '';
@@ -33,8 +44,16 @@ export function AdDashboardClient({ data, searchParams }: AdDashboardClientProps
   const [startDate, setStartDate] = useState(searchParams.startDate ?? '');
   const [endDate, setEndDate] = useState(searchParams.endDate ?? '');
   const [adType, setAdType] = useState(searchParams.adType ?? '');
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   function handleApply() {
+    if (startDate && endDate && startDate > endDate) {
+      setDateError('开始日期不能晚于结束日期');
+      return;
+    }
+    setDateError(null);
     const qs = new URLSearchParams();
     if (startDate) {
       qs.set('startDate', startDate);
@@ -46,6 +65,45 @@ export function AdDashboardClient({ data, searchParams }: AdDashboardClientProps
       qs.set('adType', adType);
     }
     router.push(`${localePrefix}/ads/dashboard?${qs.toString()}`);
+  }
+
+  async function handleSync(shopId: string) {
+    if (!accessToken || !brandId) {
+      return;
+    }
+    const date = endDate || new Date().toISOString().split('T')[0]!;
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/ads/sync`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'x-brand-id': brandId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ shopId, date }),
+      });
+      if (!res.ok) {
+        throw new Error(`同步失败 (${res.status})`);
+      }
+      setSyncMsg('同步完成，正在刷新数据…');
+      router.refresh();
+    } catch (err) {
+      setSyncMsg(err instanceof Error ? err.message : '同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  if (fetchError) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-16">
+          <p className="text-destructive text-sm">数据加载失败：{fetchError}</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   if (data === null) {
@@ -83,6 +141,13 @@ export function AdDashboardClient({ data, searchParams }: AdDashboardClientProps
 
   return (
     <div className="space-y-6">
+      {syncMsg && (
+        <p
+          className={`text-sm ${syncing ? 'text-muted-foreground' : syncMsg.includes('失败') ? 'text-destructive' : 'text-green-600'}`}
+        >
+          {syncMsg}
+        </p>
+      )}
       {/* 筛选栏 */}
       <Card>
         <CardContent className="flex flex-wrap items-end gap-4 pt-6">
@@ -118,13 +183,16 @@ export function AdDashboardClient({ data, searchParams }: AdDashboardClientProps
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="rounded-md bg-[rgb(var(--brand-primary))] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-opacity"
-          >
-            应用
-          </button>
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={handleApply}
+              className="rounded-md bg-[rgb(var(--brand-primary))] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+            >
+              应用
+            </button>
+            {dateError && <p className="text-xs text-destructive">{dateError}</p>}
+          </div>
         </CardContent>
       </Card>
 
