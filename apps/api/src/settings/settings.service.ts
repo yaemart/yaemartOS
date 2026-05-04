@@ -1,8 +1,29 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClientManager } from '../database/prisma.service';
+import { RealtimeBusService } from '../realtime/realtime-bus.service';
 import { UpsertConfigDto } from './dto/upsert-config.dto';
 import { UpdateBrandThemeDto } from './dto/update-brand-theme.dto';
+
+const KNOWN_BRAND_IDS = ['homtone', 'spoonlemon', 'davivy', 'tysun'] as const;
+type KnownBrandId = (typeof KNOWN_BRAND_IDS)[number];
+
+/**
+ * SystemConfig has no `brandId` column (configs are tenant-global), but the
+ * SSE bus is per-brand. We extract the brand suffix from keys like
+ * `feature_flag.LISTING_AI.homtone`; if none is present, the change applies
+ * to all brands and we fan-out a publish to each. Fan-out is safe because
+ * Redis pub/sub is cheap and only the settings page subscribes to
+ * `system-config`.
+ */
+function extractBrandFromKey(key: string): KnownBrandId | null {
+  for (const brand of KNOWN_BRAND_IDS) {
+    if (key.endsWith(`.${brand}`)) {
+      return brand;
+    }
+  }
+  return null;
+}
 
 export type ConnectionId =
   | 'gemini'
@@ -25,6 +46,7 @@ export class SettingsService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly config: ConfigService,
+    private readonly realtimeBus: RealtimeBusService,
   ) {}
 
   private get prisma() {
@@ -58,7 +80,7 @@ export class SettingsService {
   }
 
   async upsert(key: string, category: string, dto: UpsertConfigDto, userId?: string) {
-    return this.prisma.systemConfig.upsert({
+    const result = await this.prisma.systemConfig.upsert({
       where: { key },
       update: {
         value: dto.value,
@@ -73,6 +95,29 @@ export class SettingsService {
         updatedBy: userId,
       },
     });
+
+    this.publishSystemConfigEvent(key, category, userId);
+
+    return result;
+  }
+
+  private publishSystemConfigEvent(key: string, category: string, userId?: string): void {
+    const explicitBrand = extractBrandFromKey(key);
+    const brandIds: readonly string[] = explicitBrand ? [explicitBrand] : KNOWN_BRAND_IDS;
+    const ts = Date.now();
+    const actorType = userId ? 'user' : 'agent';
+    for (const brandId of brandIds) {
+      void this.realtimeBus.publish({
+        entity: 'system-config',
+        action: 'update',
+        brandId,
+        ids: [key],
+        actorType,
+        actorId: userId,
+        timestamp: ts,
+        metadata: { category, brandScoped: explicitBrand !== null },
+      });
+    }
   }
 
   async getAiCostSummary() {
@@ -145,7 +190,7 @@ export class SettingsService {
       throw new NotFoundException(`Brand not found: ${brandId}`);
     }
 
-    return this.prisma.brand.update({
+    const updated = await this.prisma.brand.update({
       where: { id: brandId },
       data: {
         ...(dto.themeColor !== undefined ? { themeColor: dto.themeColor } : {}),
@@ -154,5 +199,23 @@ export class SettingsService {
       },
       select: { id: true, name: true, slug: true, themeColor: true, logoUrl: true },
     });
+
+    void this.realtimeBus.publish({
+      entity: 'system-config',
+      action: 'update',
+      brandId,
+      ids: [`brand-theme.${brandId}`],
+      actorType: userId ? 'user' : 'agent',
+      actorId: userId,
+      timestamp: Date.now(),
+      metadata: {
+        category: 'brand_theme',
+        brandScoped: true,
+        themeColor: dto.themeColor ?? null,
+        logoUrl: dto.logoUrl ?? null,
+      },
+    });
+
+    return updated;
   }
 }

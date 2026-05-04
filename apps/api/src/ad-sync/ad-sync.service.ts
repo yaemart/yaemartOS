@@ -3,6 +3,7 @@ import { AdType } from '../generated/prisma';
 import { PrismaClientManager } from '../database/prisma.service';
 import { LingxingClient } from '@yaemartos/lingxing-client';
 import type { AdReportFetchResult } from '@yaemartos/lingxing-client';
+import { RealtimeBusService } from '../realtime/realtime-bus.service';
 
 export type AdTypeStatus = 'ok' | 'skipped' | 'error';
 
@@ -22,6 +23,7 @@ export class AdSyncService {
   constructor(
     private readonly prismaManager: PrismaClientManager,
     private readonly lingxingClient: LingxingClient,
+    private readonly realtimeBus: RealtimeBusService,
   ) {}
 
   async syncShopDate(shopId: string, brandId: string, date: string): Promise<SyncShopResult> {
@@ -82,6 +84,20 @@ export class AdSyncService {
     this.logger.log(
       `syncShopDate shopId=${shopId} date=${date} totalSpend=${totalSpend} result=${JSON.stringify(result)}`,
     );
+
+    // Realtime fanout: dashboards observing this shop refresh as soon as the
+    // sync transaction commits. We send a single event with shopId+date in
+    // metadata so the client can decide whether the visible date range
+    // intersects with the synced date.
+    void this.realtimeBus.publish({
+      entity: 'ad-daily-stat',
+      action: 'update',
+      brandId,
+      ids: [`${shopId}:${date}`],
+      actorType: 'system',
+      timestamp: Date.now(),
+      metadata: { shopId, date, totalSpend },
+    });
 
     return result;
   }

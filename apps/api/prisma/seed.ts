@@ -7,6 +7,72 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
+const REALTIME_UI_BRANDS = ['homtone', 'spoonlemon', 'davivy', 'tysun'] as const;
+type RealtimeUiBrand = (typeof REALTIME_UI_BRANDS)[number];
+
+interface FeatureFlagSeed {
+  key: string;
+  value: 'true' | 'false';
+  label: string;
+}
+
+/**
+ * Compute the per-brand `AGENT_NATIVE_REALTIME_UI` flag values for this
+ * seed run. The global toggle is always seeded `false` (operators flip
+ * it on via the settings UI when the org-wide rollout completes); the
+ * per-brand toggles default to `false` and switch to `true` only when
+ * the brand id appears in `YAEMART_SEED_REALTIME_UI_BRANDS` (comma
+ * separated, case-insensitive).
+ *
+ * Staging deploy steps for W47 → W48 single-brand canary:
+ *
+ *   $ YAEMART_SEED_REALTIME_UI_BRANDS=homtone pnpm seed
+ *
+ * The variable is intentionally narrow so dev / e2e seeds (which run
+ * with no env override) keep the historical "all four brands off" shape
+ * the SSE E2E suite relies on for its 403 baseline.
+ */
+function buildRealtimeUiFlags(): FeatureFlagSeed[] {
+  const enabled = parseRealtimeUiBrands(process.env.YAEMART_SEED_REALTIME_UI_BRANDS);
+  return [
+    {
+      key: 'feature_flag.AGENT_NATIVE_REALTIME_UI',
+      value: 'false',
+      label: 'Agent → UI 实时同步 (全局总开关，默认 off)',
+    },
+    ...REALTIME_UI_BRANDS.map<FeatureFlagSeed>((brand) => ({
+      key: `feature_flag.AGENT_NATIVE_REALTIME_UI.${brand}`,
+      value: enabled.has(brand) ? 'true' : 'false',
+      label: `Agent → UI 实时同步 (${capitalise(brand)})`,
+    })),
+  ];
+}
+
+function parseRealtimeUiBrands(raw: string | undefined): Set<RealtimeUiBrand> {
+  if (!raw) {
+    return new Set();
+  }
+  const tokens = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const out = new Set<RealtimeUiBrand>();
+  for (const tok of tokens) {
+    if ((REALTIME_UI_BRANDS as readonly string[]).includes(tok)) {
+      out.add(tok as RealtimeUiBrand);
+    } else {
+      console.warn(
+        `[seed] YAEMART_SEED_REALTIME_UI_BRANDS contains unknown brand "${tok}" — ignored.`,
+      );
+    }
+  }
+  return out;
+}
+
+function capitalise(s: string): string {
+  return s.length === 0 ? s : `${s[0]!.toUpperCase()}${s.slice(1)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Brands
 // ---------------------------------------------------------------------------
@@ -520,6 +586,13 @@ async function main() {
         value: 'true',
         label: 'AI 广告优化建议 (Homtone)',
       },
+      // ADR-011 Real-time Agent → UI sync (W46+ scope-cut plan).
+      // Global toggle stays off everywhere; per-brand entries are flipped
+      // on by exporting `YAEMART_SEED_REALTIME_UI_BRANDS=homtone` (comma
+      // separated) before running `pnpm seed`. W47 staging plan: only
+      // `homtone` is enabled; W48 evaluation decides the next brand;
+      // production W52 mirrors the same env-var driven approach.
+      ...buildRealtimeUiFlags(),
     ];
     for (const flag of devFlags) {
       await prisma.systemConfig.upsert({

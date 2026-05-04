@@ -30,6 +30,7 @@ import { AdSyncModule } from './ad-sync/ad-sync.module';
 import { AdDashboardModule } from './ad-dashboard/ad-dashboard.module';
 import { AdSuggestionModule } from './ad-suggestion/ad-suggestion.module';
 import { MetricModule } from './metric/metric.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { MetricModule } from './metric/metric.module';
     AdDashboardModule,
     AdSuggestionModule,
     MetricModule,
+    RealtimeModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: TenantGuard },

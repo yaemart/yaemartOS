@@ -7,6 +7,7 @@ import {
 import { LingxingClient } from '@yaemartos/lingxing-client';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaClientManager } from '../database/prisma.service';
+import { RealtimeBusService } from '../realtime/realtime-bus.service';
 import { BindShopDto } from './dto/bind-shop.dto';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateBindingDto } from './dto/update-binding.dto';
@@ -17,6 +18,7 @@ export class ShopService {
     private readonly prismaManager: PrismaClientManager,
     private readonly auditService: AuditService,
     private readonly lingxingClient: LingxingClient,
+    private readonly realtimeBus: RealtimeBusService,
   ) {}
 
   private get prisma() {
@@ -110,7 +112,7 @@ export class ShopService {
   }
 
   async bind(shopId: string, dto: BindShopDto, userId?: string) {
-    await this.assertShopExists(shopId);
+    const shop = await this.assertShopExists(shopId);
 
     const binding = await this.prisma.shopBinding.upsert({
       where: { shopId },
@@ -136,6 +138,17 @@ export class ShopService {
       metadata: { shopId, lingxingShopId: dto.lingxingShopId },
     });
 
+    void this.realtimeBus.publish({
+      entity: 'shop-binding',
+      action: 'update',
+      brandId: shop.brandId,
+      ids: [binding.id, shopId],
+      actorType: userId ? 'user' : 'agent',
+      actorId: userId,
+      timestamp: Date.now(),
+      metadata: { shopId, lingxingShopId: dto.lingxingShopId, action: 'bind' },
+    });
+
     return binding;
   }
 
@@ -144,7 +157,7 @@ export class ShopService {
       throw new BadRequestException('At least one of "unbind" or "syncEnabled" must be provided.');
     }
 
-    await this.assertShopExists(shopId);
+    const shop = await this.assertShopExists(shopId);
 
     const data =
       dto.unbind === true
@@ -156,13 +169,27 @@ export class ShopService {
       data,
     });
 
+    const isUnbind = dto.unbind === true;
     await this.auditService.logWrite({
       userId,
       tenant: undefined,
-      action: dto.unbind === true ? 'shop.binding.unbind' : 'shop.binding.update',
+      action: isUnbind ? 'shop.binding.unbind' : 'shop.binding.update',
       entity: 'ShopBinding',
       entityId: binding.id,
-      metadata: dto.unbind === true ? { shopId } : { shopId, syncEnabled: dto.syncEnabled },
+      metadata: isUnbind ? { shopId } : { shopId, syncEnabled: dto.syncEnabled },
+    });
+
+    void this.realtimeBus.publish({
+      entity: 'shop-binding',
+      action: 'update',
+      brandId: shop.brandId,
+      ids: [binding.id, shopId],
+      actorType: userId ? 'user' : 'agent',
+      actorId: userId,
+      timestamp: Date.now(),
+      metadata: isUnbind
+        ? { shopId, action: 'unbind' }
+        : { shopId, action: 'toggleSync', syncEnabled: dto.syncEnabled ?? null },
     });
 
     return binding;

@@ -17,6 +17,10 @@ export async function login(email: string, password: string): Promise<TokenPair>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
+    // Include the HttpOnly `ya_sid` cookie set by the API so SSE
+    // (EventSource) handshakes can authenticate without an Authorization
+    // header. See ADR-011.
+    credentials: 'include',
   });
   if (!res.ok) {
     throw new Error(`Login failed: ${res.status}`);
@@ -29,6 +33,7 @@ export async function refreshTokens(refreshToken: string): Promise<TokenPair> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
+    credentials: 'include',
   });
   if (!res.ok) {
     throw new Error(`Refresh failed: ${res.status}`);

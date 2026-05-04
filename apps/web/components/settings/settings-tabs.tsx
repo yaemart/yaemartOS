@@ -1,13 +1,26 @@
 'use client';
 
-import { useState } from 'react';
-import { User, Bell, Shield, Globe, Bot, ToggleLeft, Palette } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  User,
+  Bell,
+  Shield,
+  Globe,
+  Bot,
+  ToggleLeft,
+  Palette,
+  RefreshCw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import type {
   ConnectionHealth,
   SystemConfig,
   AiCostSummary,
   BrandTheme,
 } from '@/lib/api/settings-client';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 import { ConnectionsPanel } from './connections-panel';
 import { FeatureFlagsPanel } from './feature-flags-panel';
 import { AiConfigPanel } from './ai-config-panel';
@@ -174,7 +187,24 @@ export function SettingsTabs({
   aiCost: AiCostSummary | null;
   brands: BrandTheme[];
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('account');
+  // Bumped on accept; used as React key on panel children so they
+  // re-initialise their internal `useState(initialFromProps)` state from
+  // the freshly server-rendered props after `router.refresh()`.
+  const [panelEpoch, setPanelEpoch] = useState(0);
+
+  const { pendingEvents, dismissPending } = useEntityRevalidation('system-config', {
+    mode: 'toast',
+  });
+  const newestPending = pendingEvents[pendingEvents.length - 1] ?? null;
+  const pendingCount = pendingEvents.length;
+
+  const applyPending = useCallback(() => {
+    dismissPending();
+    setPanelEpoch((n) => n + 1);
+    router.refresh();
+  }, [dismissPending, router]);
 
   const tabContent: Record<Tab, React.ReactNode> = {
     account: <AccountTab />,
@@ -182,41 +212,76 @@ export function SettingsTabs({
     notifications: <NotificationsTab />,
     ai: (
       <AiConfigPanel
+        key={panelEpoch}
         accessToken={accessToken}
         connections={connections}
         aiRouting={aiRouting}
         aiCost={aiCost}
       />
     ),
-    flags: <FeatureFlagsPanel accessToken={accessToken} featureFlags={featureFlags} />,
-    brands: <BrandThemePanel accessToken={accessToken} brands={brands} />,
+    flags: (
+      <FeatureFlagsPanel key={panelEpoch} accessToken={accessToken} featureFlags={featureFlags} />
+    ),
+    brands: <BrandThemePanel key={panelEpoch} accessToken={accessToken} brands={brands} />,
     locale: <LocaleTab />,
   };
 
   return (
-    <div className="flex gap-6">
-      <aside className="w-44 flex-shrink-0">
-        <nav className="space-y-0.5">
-          {TABS.map(({ id, icon: Icon, label }) => (
+    <div>
+      {newestPending && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            <span>
+              {newestPending.actorType === 'agent' ? 'AI Agent' : '其他用户'} 已修改系统配置
+              {pendingCount > 1 ? `（共 ${pendingCount} 项）` : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              key={id}
               type="button"
-              onClick={() => setActiveTab(id)}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                activeTab === id
-                  ? 'bg-zinc-100 font-medium text-zinc-900'
-                  : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
-              }`}
+              onClick={applyPending}
+              className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
             >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
+              <RefreshCw className="h-3 w-3" />
+              应用
             </button>
-          ))}
-        </nav>
-      </aside>
+            <button
+              type="button"
+              onClick={dismissPending}
+              aria-label="忽略"
+              className="rounded-md p-1 text-amber-700 hover:bg-amber-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
-      <div className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-6 py-2">
-        {tabContent[activeTab]}
+      <div className="flex gap-6">
+        <aside className="w-44 flex-shrink-0">
+          <nav className="space-y-0.5">
+            {TABS.map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  activeTab === id
+                    ? 'bg-zinc-100 font-medium text-zinc-900'
+                    : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
+                }`}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-6 py-2">
+          {tabContent[activeTab]}
+        </div>
       </div>
     </div>
   );

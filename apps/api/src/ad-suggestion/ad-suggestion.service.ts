@@ -1,15 +1,18 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaClientManager } from '../database/prisma.service';
 import { GlmGenerationService } from '../ai/providers/glm-generation.service';
 import { CostTrackingService } from '../ai/cost-tracking.service';
 import { AuditService } from '../common/audit/audit.service';
+import { RealtimeBusService } from '../realtime/realtime-bus.service';
 import {
   AdActionType,
   AdChangeStatus,
@@ -22,6 +25,15 @@ const SUGGESTION_TTL_DAYS = 7;
 const TARGET_ACOS = 30; // %
 const ACOS_BREACH_THRESHOLD = 39; // 130% of target
 const CTR_BREACH_THRESHOLD = 0.1; // %
+/** Cap the number of campaigns sent to GLM to keep prompt size bounded and tokens predictable. */
+const MAX_CAMPAIGNS_PER_PROMPT = 50;
+const VALID_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'increase_bid',
+  'decrease_bid',
+  'pause',
+  'enable',
+] satisfies AdActionType[]);
+const VALID_FIELDS: ReadonlySet<string> = new Set(['bid', 'budget', 'status']);
 
 export interface AdSuggestionItem {
   campaignId: string;
@@ -55,10 +67,30 @@ export class AdSuggestionService {
     private readonly glm: GlmGenerationService,
     private readonly costTracking: CostTrackingService,
     private readonly audit: AuditService,
+    private readonly config: ConfigService,
+    private readonly realtimeBus: RealtimeBusService,
   ) {}
 
   private get prisma() {
     return this.prismaManager.getPublicClient();
+  }
+
+  /**
+   * Verifies the shop belongs to the given brand. Required before any cross-tenant
+   * read/write. Throws ForbiddenException if the shop is owned by a different brand,
+   * NotFoundException if it does not exist.
+   */
+  private async assertShopOwnership(shopId: string, brandId: string): Promise<void> {
+    const shop = await this.prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { brandId: true },
+    });
+    if (!shop) {
+      throw new NotFoundException(`Shop ${shopId} not found`);
+    }
+    if (shop.brandId !== brandId) {
+      throw new ForbiddenException('Shop does not belong to current brand');
+    }
   }
 
   async generate(opts: {
@@ -68,6 +100,9 @@ export class AdSuggestionService {
     startDate?: string;
     endDate?: string;
   }) {
+    // P0: enforce cross-brand isolation before reading any shop-scoped data.
+    await this.assertShopOwnership(opts.shopId, opts.brandId);
+
     const end = opts.endDate ? new Date(opts.endDate + 'T23:59:59.999Z') : new Date();
     const start = opts.startDate
       ? new Date(opts.startDate + 'T00:00:00.000Z')
@@ -88,29 +123,48 @@ export class AdSuggestionService {
       };
     }
 
+    // Bound prompt size: rank by spend desc and take top N. High-spend campaigns
+    // dominate ROI impact, so this is an intentional triage rather than truncation.
+    const promptCampaigns = [...breaching]
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, MAX_CAMPAIGNS_PER_PROMPT);
+
     const startedAt = Date.now();
     let suggestions: AdSuggestionItem[] = [];
+    let glmError: unknown = null;
 
     try {
       const result = await this.glm.generateJson<{ suggestions: AdSuggestionItem[] }>(
         SYSTEM_PROMPT,
-        buildUserPrompt(breaching),
+        buildUserPrompt(promptCampaigns),
       );
       suggestions = Array.isArray(result?.suggestions) ? result.suggestions : [];
     } catch (err) {
+      glmError = err;
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`GLM generate failed for shop=${opts.shopId}: ${message}`);
-      throw err;
-    } finally {
-      const promptChars = SYSTEM_PROMPT.length + JSON.stringify(breaching).length;
+    }
+
+    // Cost tracking is best-effort: never let it shadow the GLM result or rethrow.
+    // Run after the GLM call so success-path tokens are recorded; on GLM failure
+    // we still record the prompt tokens consumed.
+    try {
+      const promptChars = SYSTEM_PROMPT.length + JSON.stringify(promptCampaigns).length;
       await this.costTracking.record({
-        model: process.env.GLM_MODEL ?? 'glm-4-flash',
+        model: this.config.get<string>('GLM_MODEL') ?? 'glm-4-flash',
         taskType: 'ads.suggest',
         brandId: opts.brandId,
         promptTokens: Math.ceil(promptChars / 4),
         completionTokens: Math.ceil(JSON.stringify(suggestions).length / 4),
         durationMs: Date.now() - startedAt,
       });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Cost tracking record failed (non-fatal): ${message}`);
+    }
+
+    if (glmError) {
+      throw glmError;
     }
 
     if (suggestions.length === 0) {
@@ -125,29 +179,85 @@ export class AdSuggestionService {
     const expiresAt = new Date(Date.now() + SUGGESTION_TTL_DAYS * 24 * 60 * 60 * 1000);
     const campaignByid = new Map(metrics.map((m) => [m.campaignId, m]));
 
-    const created = await this.prisma.adSuggestion.createMany({
-      data: suggestions
-        .filter((s) => campaignByid.has(s.campaignId))
-        .map((s) => {
-          const m = campaignByid.get(s.campaignId)!;
-          return {
-            batchId,
-            shopId: opts.shopId,
-            brandId: opts.brandId,
-            campaignId: s.campaignId,
-            campaignName: s.campaignName ?? m.campaignName,
-            adType: m.adType,
-            actionType: s.actionType,
-            field: s.field,
-            currentValue: s.currentValue,
-            suggestedValue: s.suggestedValue,
-            reason: s.reason,
-            status: AdSuggestionStatus.pending,
-            generatedBy: opts.userId,
-            expiresAt,
-          };
-        }),
-    });
+    // Validate each GLM suggestion before persistence. Defensive against
+    // (1) hallucinated campaignIds, (2) invalid actionType / field strings,
+    // (3) non-numeric or out-of-range values.
+    const validSuggestions = suggestions
+      .filter((s) => {
+        if (!campaignByid.has(s.campaignId)) {
+          return false;
+        }
+        if (!VALID_ACTION_TYPES.has(s.actionType)) {
+          return false;
+        }
+        if (!VALID_FIELDS.has(s.field)) {
+          return false;
+        }
+        if (typeof s.currentValue !== 'number' || !Number.isFinite(s.currentValue)) {
+          return false;
+        }
+        if (typeof s.suggestedValue !== 'number' || !Number.isFinite(s.suggestedValue)) {
+          return false;
+        }
+        if (s.currentValue < 0 || s.suggestedValue < 0) {
+          return false;
+        }
+        if (typeof s.reason !== 'string' || s.reason.trim().length === 0) {
+          return false;
+        }
+        return true;
+      })
+      .map((s) => {
+        const m = campaignByid.get(s.campaignId)!;
+        return {
+          batchId,
+          shopId: opts.shopId,
+          brandId: opts.brandId,
+          campaignId: s.campaignId,
+          campaignName: s.campaignName ?? m.campaignName,
+          adType: m.adType,
+          actionType: s.actionType,
+          field: s.field,
+          currentValue: s.currentValue,
+          suggestedValue: s.suggestedValue,
+          reason: s.reason,
+          status: AdSuggestionStatus.pending,
+          generatedBy: opts.userId,
+          expiresAt,
+        };
+      });
+
+    if (validSuggestions.length < suggestions.length) {
+      this.logger.warn(
+        `Filtered ${suggestions.length - validSuggestions.length}/${suggestions.length} GLM suggestions for shop=${opts.shopId} due to validation failures`,
+      );
+    }
+
+    if (validSuggestions.length === 0) {
+      return {
+        batchId: null,
+        count: 0,
+        message: 'AI 输出未通过校验，请稍后重试',
+      };
+    }
+
+    const created = await this.prisma.adSuggestion.createMany({ data: validSuggestions });
+
+    // Realtime fanout: the suggestions table refreshes from a single event
+    // because the UI re-fetches the page list rather than upserting per-row.
+    // We pass `shopId` so client code can ignore events for other shops.
+    if (created.count > 0) {
+      void this.realtimeBus.publish({
+        entity: 'ad-suggestion',
+        action: 'create',
+        brandId: opts.brandId,
+        ids: [batchId],
+        actorType: opts.userId ? 'user' : 'agent',
+        actorId: opts.userId,
+        timestamp: Date.now(),
+        metadata: { shopId: opts.shopId, count: created.count },
+      });
+    }
 
     return {
       batchId,
@@ -166,13 +276,28 @@ export class AdSuggestionService {
     const take = Math.min(opts.limit ?? 50, 200);
     const skip = ((opts.page ?? 1) - 1) * take;
 
-    // Lazy-expire: any pending suggestion past expiresAt is treated as expired in the response
+    // Lazy-expire: callers asking for `pending` should not see lazy-expired rows.
+    // Apply the expiresAt filter in the WHERE clause so `total` matches the
+    // projected `records` and pagination is correct.
     const now = new Date();
-    const where = {
+    const baseWhere = {
       brandId: opts.brandId,
       ...(opts.shopId ? { shopId: opts.shopId } : {}),
-      ...(opts.status ? { status: opts.status } : {}),
     };
+    const where =
+      opts.status === AdSuggestionStatus.pending
+        ? { ...baseWhere, status: AdSuggestionStatus.pending, expiresAt: { gt: now } }
+        : opts.status === AdSuggestionStatus.expired
+          ? {
+              ...baseWhere,
+              OR: [
+                { status: AdSuggestionStatus.expired },
+                { status: AdSuggestionStatus.pending, expiresAt: { lte: now } },
+              ],
+            }
+          : opts.status
+            ? { ...baseWhere, status: opts.status }
+            : baseWhere;
 
     const [records, total] = await Promise.all([
       this.prisma.adSuggestion.findMany({
@@ -184,6 +309,7 @@ export class AdSuggestionService {
       this.prisma.adSuggestion.count({ where }),
     ]);
 
+    // Project pending+expired rows to logical `expired` for the UI.
     const projected = records.map((r) => ({
       ...r,
       status:
@@ -213,6 +339,8 @@ export class AdSuggestionService {
    * so future jobs can lock the row once the window closes.
    */
   async execute(id: string, brandId: string, userId?: string) {
+    // Pre-flight read for ownership + readable error messages. The actual
+    // status transition is gated by an atomic compare-and-set inside the tx.
     const suggestion = await this.findOne(id, brandId);
 
     if (suggestion.status !== AdSuggestionStatus.pending) {
@@ -226,16 +354,17 @@ export class AdSuggestionService {
     const reversibleBefore = new Date(now.getTime() + ROLLBACK_WINDOW_HOURS * 60 * 60 * 1000);
 
     const change = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.adSuggestion.update({
-        where: { id },
+      // Atomic CAS: only flip pending -> executed, and only if not yet expired.
+      // updateMany returns count=0 when WHERE doesn't match, so two concurrent
+      // requests cannot both transition the same row.
+      const cas = await tx.adSuggestion.updateMany({
+        where: { id, brandId, status: AdSuggestionStatus.pending, expiresAt: { gt: now } },
         data: { status: AdSuggestionStatus.executed, updatedAt: now },
       });
-
-      // ConflictException-safe guard: the where clause above only matches the
-      // current row, but if a concurrent request raced through findOne it could
-      // double-execute. Reject here when status drifted.
-      if (updated.status !== AdSuggestionStatus.executed) {
-        throw new ConflictException('Suggestion status changed mid-execution');
+      if (cas.count === 0) {
+        throw new ConflictException(
+          'Suggestion is no longer pending or has expired (concurrent update)',
+        );
       }
 
       const newChange = await tx.adChange.create({
@@ -277,6 +406,29 @@ export class AdSuggestionService {
       },
     });
 
+    const ts = Date.now();
+    const actorType = userId ? 'user' : 'agent';
+    void this.realtimeBus.publish({
+      entity: 'ad-suggestion',
+      action: 'update',
+      brandId,
+      ids: [id],
+      actorType,
+      actorId: userId,
+      timestamp: ts,
+      metadata: { shopId: suggestion.shopId, status: AdSuggestionStatus.executed },
+    });
+    void this.realtimeBus.publish({
+      entity: 'ad-change',
+      action: 'create',
+      brandId,
+      ids: [change.id],
+      actorType,
+      actorId: userId,
+      timestamp: ts,
+      metadata: { shopId: suggestion.shopId, suggestionId: id },
+    });
+
     return { suggestion: { ...suggestion, status: AdSuggestionStatus.executed }, change };
   }
 
@@ -285,10 +437,14 @@ export class AdSuggestionService {
     if (suggestion.status !== AdSuggestionStatus.pending) {
       throw new ConflictException(`Suggestion is in status=${suggestion.status}, cannot reject`);
     }
-    const updated = await this.prisma.adSuggestion.update({
-      where: { id },
+    // Atomic CAS to guard against concurrent reject/execute racing past findOne.
+    const cas = await this.prisma.adSuggestion.updateMany({
+      where: { id, brandId, status: AdSuggestionStatus.pending },
       data: { status: AdSuggestionStatus.rejected, updatedAt: new Date() },
     });
+    if (cas.count === 0) {
+      throw new ConflictException('Suggestion is no longer pending (concurrent update)');
+    }
 
     await this.audit.logWrite({
       userId,
@@ -302,7 +458,18 @@ export class AdSuggestionService {
       },
     });
 
-    return updated;
+    void this.realtimeBus.publish({
+      entity: 'ad-suggestion',
+      action: 'update',
+      brandId,
+      ids: [id],
+      actorType: userId ? 'user' : 'agent',
+      actorId: userId,
+      timestamp: Date.now(),
+      metadata: { shopId: suggestion.shopId, status: AdSuggestionStatus.rejected },
+    });
+
+    return { ...suggestion, status: AdSuggestionStatus.rejected };
   }
 
   /**
@@ -326,18 +493,49 @@ export class AdSuggestionService {
 
     const now = new Date();
     const result = await this.prisma.$transaction(async (tx) => {
-      const updatedChange = await tx.adChange.update({
-        where: { id: changeId },
+      // Atomic CAS on the change row: only one rollback can win.
+      const cas = await tx.adChange.updateMany({
+        where: {
+          id: changeId,
+          brandId,
+          status: AdChangeStatus.executed,
+          reversibleBefore: { gt: now },
+        },
         data: {
           status: AdChangeStatus.rolled_back,
           rolledBackAt: now,
           rolledBackBy: userId,
         },
       });
+      if (cas.count === 0) {
+        throw new ConflictException(
+          'Change is no longer reversible (already rolled back or window closed)',
+        );
+      }
+
+      // Reload the updated change row for the response. Since we just CAS-updated
+      // it, this read is safe inside the transaction.
+      const updatedChange = await tx.adChange.findUniqueOrThrow({ where: { id: changeId } });
+
+      // Best-effort: revert the source suggestion to a coherent post-rollback
+      // state. We pick `pending` only when it is still within its TTL — an
+      // already-expired suggestion must transition to `expired` instead, never
+      // back to pending (otherwise list() would mark it expired-via-projection
+      // again and execute() would refuse it, leaving the UI confused).
+      // updateMany silently no-ops if the suggestion was deleted, which is the
+      // intended degraded behaviour rather than a 500.
       if (change.suggestionId) {
-        await tx.adSuggestion.update({
+        const suggestion = await tx.adSuggestion.findUnique({
           where: { id: change.suggestionId },
-          data: { status: AdSuggestionStatus.pending, updatedAt: now },
+          select: { expiresAt: true },
+        });
+        const nextStatus =
+          suggestion && suggestion.expiresAt < now
+            ? AdSuggestionStatus.expired
+            : AdSuggestionStatus.pending;
+        await tx.adSuggestion.updateMany({
+          where: { id: change.suggestionId, brandId },
+          data: { status: nextStatus, updatedAt: now },
         });
       }
       return updatedChange;
@@ -357,6 +555,31 @@ export class AdSuggestionService {
         valueBefore: change.valueBefore?.toString() ?? null,
       },
     });
+
+    const ts = Date.now();
+    const actorType = userId ? 'user' : 'agent';
+    void this.realtimeBus.publish({
+      entity: 'ad-change',
+      action: 'update',
+      brandId,
+      ids: [changeId],
+      actorType,
+      actorId: userId,
+      timestamp: ts,
+      metadata: { shopId: change.shopId, status: AdChangeStatus.rolled_back },
+    });
+    if (change.suggestionId) {
+      void this.realtimeBus.publish({
+        entity: 'ad-suggestion',
+        action: 'update',
+        brandId,
+        ids: [change.suggestionId],
+        actorType,
+        actorId: userId,
+        timestamp: ts,
+        metadata: { shopId: change.shopId, action: 'rollback' },
+      });
+    }
 
     return result;
   }

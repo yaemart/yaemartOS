@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   generateAdSuggestions,
@@ -12,6 +12,7 @@ import {
   type AdSuggestion,
   type ListResponse,
 } from '@/lib/api/ad-suggestion-client';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 
 const ACTION_LABELS: Record<string, string> = {
   increase_bid: '提高出价',
@@ -65,6 +66,25 @@ export function AdSuggestionListClient({
   });
   const [working, setWorking] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Realtime: list page is read-mostly, so `auto` mode is safe — every
+  // generate/execute/reject/rollback in another tab or by an agent
+  // immediately re-runs the server fetch via router.refresh().
+  //
+  // We surface a transient "刚刚刷新" ribbon so users notice the page mutated
+  // under them (otherwise silent updates erode trust — see ADR-011 §D3).
+  const [showRefreshRibbon, setShowRefreshRibbon] = useState(false);
+  useEntityRevalidation('ad-suggestion', {
+    mode: 'auto',
+    onEvent: () => setShowRefreshRibbon(true),
+  });
+  useEffect(() => {
+    if (!showRefreshRibbon) {
+      return;
+    }
+    const t = setTimeout(() => setShowRefreshRibbon(false), 5000);
+    return () => clearTimeout(t);
+  }, [showRefreshRibbon]);
 
   const records = initialData?.records ?? [];
 
@@ -146,6 +166,12 @@ export function AdSuggestionListClient({
         {feedback && (
           <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
             {feedback}
+          </div>
+        )}
+        {showRefreshRibbon && (
+          <div className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-1 text-xs text-violet-700">
+            <Sparkles className="h-3 w-3 text-violet-500" />
+            刚刚收到新建议，已自动刷新
           </div>
         )}
         {records.length === 0 ? (

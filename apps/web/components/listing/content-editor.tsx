@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Star, GitBranch } from 'lucide-react';
+import { Star, Sparkles } from 'lucide-react';
 import { CharCounter } from './char-counter';
-import { AiHintBubble } from './ai-hint-bubble';
 import type { ListingVersion } from '@/lib/mock-data';
 
 const TABS = ['Title', 'Bullets', 'Description', 'A+', 'Keywords'] as const;
@@ -71,13 +70,10 @@ export function ContentEditor({ version, disabled }: ContentEditorProps) {
         {activeTab === 'A+' && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-sm text-brand-text-secondary">A+ 内容暂未填写</p>
-            <AiHintBubble
-              message="AI can generate A+ content from product images"
-              actionLabel="Generate A+"
-              onAction={() => {}}
-              onDismiss={() => {}}
-              inline
-            />
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-700">
+              <Sparkles className="h-3 w-3 text-violet-500" />
+              A+ 自动生成功能将在 S5 开放，目前请手动编辑或拷贝模板
+            </p>
           </div>
         )}
         {activeTab === 'Keywords' && <KeywordsEditor keywords={version.keywords} />}
@@ -109,12 +105,10 @@ function TitleEditor({ title }: { title: string }) {
           )}
         />
         {value.length < 80 && (
-          <AiHintBubble
-            message="AI can optimize your title for SEO — add high-value keywords"
-            actionLabel="Optimize"
-            onAction={() => {}}
-            onDismiss={() => {}}
-          />
+          <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-violet-700">
+            <Sparkles className="h-2.5 w-2.5 text-violet-500" />
+            标题偏短，可在右侧 AI 助手面板中调用「优化标题」获取建议
+          </p>
         )}
       </div>
     </div>
@@ -199,13 +193,10 @@ function KeywordsEditor({ keywords }: { keywords: string }) {
         placeholder="Enter keywords separated by spaces or commas..."
       />
       {!keywords && (
-        <AiHintBubble
-          message="AI can suggest high-relevance backend keywords"
-          actionLabel="Suggest"
-          onAction={() => {}}
-          onDismiss={() => {}}
-          inline
-        />
+        <p className="inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-700">
+          <Sparkles className="h-3 w-3 text-violet-500" />
+          可在右侧 AI 助手面板点击「建议 keywords」获取候选词
+        </p>
       )}
     </div>
   );

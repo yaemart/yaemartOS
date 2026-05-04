@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Loader2, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { rollbackAdChange, type AdChange, type ListResponse } from '@/lib/api/ad-suggestion-client';
+import { useEntityRevalidation } from '@/lib/realtime/use-entity-revalidation';
 
 const STATUS_BADGE: Record<string, string> = {
   executed: 'bg-emerald-100 text-emerald-800',
@@ -34,14 +36,36 @@ export function AdChangeHistoryClient({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<AdChange | null>(null);
+
+  // Realtime: change history is read-only (operators only press 回滚 here),
+  // so `auto` is appropriate. We listen on both `ad-change` (rollback) and
+  // `ad-suggestion` (execute creates a new change row).
+  const [showRefreshRibbon, setShowRefreshRibbon] = useState(false);
+  useEntityRevalidation('ad-change', {
+    mode: 'auto',
+    onEvent: () => setShowRefreshRibbon(true),
+  });
+  useEntityRevalidation('ad-suggestion', {
+    mode: 'auto',
+    onEvent: () => setShowRefreshRibbon(true),
+  });
+  useEffect(() => {
+    if (!showRefreshRibbon) {
+      return;
+    }
+    const t = setTimeout(() => setShowRefreshRibbon(false), 5000);
+    return () => clearTimeout(t);
+  }, [showRefreshRibbon]);
 
   const records = initialData?.records ?? [];
   const now = Date.now();
 
-  async function handleRollback(change: AdChange) {
-    if (!confirm(`确认回滚 campaign ${change.campaignId} 的变更？`)) {
+  async function handleConfirmRollback() {
+    if (!confirmTarget) {
       return;
     }
+    const change = confirmTarget;
     setBusy(change.id);
     setFeedback(null);
     try {
@@ -52,6 +76,7 @@ export function AdChangeHistoryClient({
       setFeedback(err instanceof Error ? err.message : '回滚失败');
     } finally {
       setBusy(null);
+      setConfirmTarget(null);
     }
   }
 
@@ -72,6 +97,12 @@ export function AdChangeHistoryClient({
         {feedback && (
           <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
             {feedback}
+          </div>
+        )}
+        {showRefreshRibbon && (
+          <div className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-1 text-xs text-violet-700">
+            <Sparkles className="h-3 w-3 text-violet-500" />
+            刚刚有新变更，已自动刷新
           </div>
         )}
         {records.length === 0 ? (
@@ -122,7 +153,7 @@ export function AdChangeHistoryClient({
                         {reversible ? (
                           <button
                             type="button"
-                            onClick={() => handleRollback(c)}
+                            onClick={() => setConfirmTarget(c)}
                             disabled={busy === c.id}
                             className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                           >
@@ -141,6 +172,61 @@ export function AdChangeHistoryClient({
           </div>
         )}
       </CardContent>
+      <Dialog.Root
+        open={confirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) {
+            setConfirmTarget(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(90vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl">
+            <Dialog.Title className="text-base font-semibold text-zinc-900">
+              确认回滚此变更？
+            </Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-zinc-600">
+              {confirmTarget && (
+                <>
+                  Campaign <span className="font-medium">{confirmTarget.campaignId}</span> · 字段{' '}
+                  <span className="font-medium">{confirmTarget.field}</span>
+                  <br />
+                  <span className="text-zinc-500">{confirmTarget.valueAfter ?? '—'}</span>
+                  <span className="mx-1 text-zinc-400">→</span>
+                  <span className="font-medium text-zinc-900">
+                    {confirmTarget.valueBefore ?? '—'}
+                  </span>
+                </>
+              )}
+            </Dialog.Description>
+            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              MVP：本次回滚仅回退本地记录，不会推送至领星
+              ERP。如需同步真实广告，请在领星后台手动恢复。
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  取消
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                onClick={handleConfirmRollback}
+                disabled={busy !== null}
+                className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                确认回滚
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </Card>
   );
 }

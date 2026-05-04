@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { LingxingClient } from '@yaemartos/lingxing-client';
 import type { LingxingWalmartListingRaw } from '@yaemartos/lingxing-client';
+import { RealtimeBusService } from '../../realtime/realtime-bus.service';
 import { mapLingxingPathAExtraction, mapLingxingWalmartExtraction } from './mapping';
 import { PathAImportService } from './path-a-import.service';
 import { PATH_A_IMPORT_QUEUE } from './path-a-import.job';
@@ -16,8 +17,38 @@ export class PathAImportProcessor extends WorkerHost {
   constructor(
     private readonly importService: PathAImportService,
     private readonly lingxingClient: LingxingClient,
+    private readonly realtimeBus: RealtimeBusService,
   ) {
     super();
+  }
+
+  /**
+   * Publish a `migration-job` realtime event after each progress update or
+   * lifecycle transition. The frontend `import-job-progress` component uses
+   * SSE as the primary signal and keeps an 8s polling fallback for the case
+   * where Redis or SSE is unavailable.
+   */
+  private publishProgress(
+    job: Job<PathAImportJobPayload>,
+    status: 'active' | 'completed' | 'failed',
+    progress: number,
+    extra?: Record<string, string | number | boolean | null>,
+  ): void {
+    void this.realtimeBus.publish({
+      entity: 'migration-job',
+      action: 'update',
+      brandId: job.data.brandId,
+      ids: [String(job.id ?? job.data.runId), job.data.runId],
+      actorType: 'system',
+      timestamp: Date.now(),
+      metadata: {
+        runId: job.data.runId,
+        platformCode: job.data.platformCode,
+        status,
+        progress,
+        ...(extra ?? {}),
+      },
+    });
   }
 
   async process(job: Job<PathAImportJobPayload>): Promise<void> {
@@ -26,10 +57,19 @@ export class PathAImportProcessor extends WorkerHost {
       `Processing Path A import job=${job.id} runId=${runId} brand=${brandId} platform=${platformCode}`,
     );
 
-    if (platformCode === 'amazon') {
-      await this.processAmazonShops(job, runId, shopIds, { brandId, marketCode });
-    } else {
-      await this.processWalmartShops(job, runId, shopIds, { brandId, marketCode });
+    this.publishProgress(job, 'active', 0);
+
+    try {
+      if (platformCode === 'amazon') {
+        await this.processAmazonShops(job, runId, shopIds, { brandId, marketCode });
+      } else {
+        await this.processWalmartShops(job, runId, shopIds, { brandId, marketCode });
+      }
+      this.publishProgress(job, 'completed', 100);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.publishProgress(job, 'failed', 0, { error: message });
+      throw err;
     }
   }
 
@@ -70,7 +110,9 @@ export class PathAImportProcessor extends WorkerHost {
         allInputs.push(...inputs);
         hasMore = result.hasMore;
         page++;
-        await job.updateProgress(Math.round((allInputs.length / (result.total || 1)) * 50));
+        const progress = Math.round((allInputs.length / (result.total || 1)) * 50);
+        await job.updateProgress(progress);
+        this.publishProgress(job, 'active', progress, { phase: 'extract' });
       }
     }
 
@@ -79,6 +121,11 @@ export class PathAImportProcessor extends WorkerHost {
       platformCode: 'amazon',
     });
     await job.updateProgress(100);
+    this.publishProgress(job, 'active', 100, {
+      phase: 'import',
+      imported: summary.imported,
+      failed: summary.failed,
+    });
     this.logger.log(
       `Path A Amazon import done job=${job.id} imported=${summary.imported} failed=${summary.failed}`,
     );
@@ -110,7 +157,9 @@ export class PathAImportProcessor extends WorkerHost {
         allRecords.push(...extractionResults);
         hasMore = result.hasMore;
         page++;
-        await job.updateProgress(Math.round((allRecords.length / (result.total || 1)) * 50));
+        const progress = Math.round((allRecords.length / (result.total || 1)) * 50);
+        await job.updateProgress(progress);
+        this.publishProgress(job, 'active', progress, { phase: 'extract' });
       }
     }
 
@@ -119,6 +168,11 @@ export class PathAImportProcessor extends WorkerHost {
       platformCode: 'walmart',
     });
     await job.updateProgress(100);
+    this.publishProgress(job, 'active', 100, {
+      phase: 'import',
+      imported: summary.imported,
+      failed: summary.failed,
+    });
     this.logger.log(
       `Path A Walmart import done job=${job.id} imported=${summary.imported} failed=${summary.failed}`,
     );
